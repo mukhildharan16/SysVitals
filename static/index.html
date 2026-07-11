@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Thermal Watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0E14;
+    --panel:#12161F;
+    --panel-2:#161B26;
+    --border:#1E2530;
+    --text:#E9EEF3;
+    --muted:#7C8798;
+    --cool:#4FB8D6;
+    --warm:#E8A93D;
+    --hot:#E8563D;
+    --crit:#FF3B3B;
+    --accent: var(--cool);
+    --glow: 0 0 24px rgba(79,184,214,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(79,184,214,0.06), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(232,86,61,0.05), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:540px;margin:0 auto;}
+  header{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    margin-bottom:28px;flex-wrap:wrap;gap:12px;
+  }
+  .brand{display:flex;flex-direction:column;gap:4px;}
+  .brand .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;
+    color:var(--muted);text-transform:uppercase;
+  }
+  .brand h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-0.01em;}
+  .hostline{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);
+    display:flex;align-items:center;gap:8px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:#5FD48A;box-shadow:0 0 8px rgba(95,212,138,0.7);}
+
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:26px;position:relative;overflow:hidden;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+  .panel-title{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    color:var(--muted);text-transform:uppercase;margin-bottom:16px;
+    font-weight: 600;
+  }
+
+  /* Gauge */
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:16px;}
+  .gauge{position:relative;width:210px;height:210px;}
+  .gauge svg{width:100%;height:100%;transform:rotate(-90deg);}
+  .gauge-track{fill:none;stroke:var(--panel-2);stroke-width:12;}
+  .gauge-arc{fill:none;stroke-width:12;stroke-linecap:round;transition:stroke-dashoffset 0.6s ease, stroke 0.6s ease;}
+  .gauge-center{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;
+  }
+  .gauge-temp{font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:600;line-height:1;transition:color .6s ease;}
+  .gauge-unit{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  .mode-chip{
+    margin-top:10px;padding:6px 14px;border-radius:999px;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--border);
+    background:var(--panel-2);transition:box-shadow .6s ease, border-color .6s ease, color .6s ease;
+  }
+  .stat-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);
+    padding:10px 0;border-top:1px solid var(--border);}
+  .stat-row b{color:var(--text);font-weight:600;font-family:'IBM Plex Mono',monospace;}
+
+  footer{margin-top:28px;text-align:center;color:var(--muted);font-size:11px;font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="eyebrow">// Thermal Watch</span>
+      <h1>System Vitals Monitor</h1>
+    </div>
+    <div class="hostline"><span class="dot" id="liveDot"></span><span id="hostLabel">waiting for data…</span></div>
+  </header>
+
+  <!-- CPU LIVE PANEL -->
+  <div class="panel">
+    <div class="panel-title">CPU Telemetry</div>
+    <div class="gauge-wrap">
+      <div class="gauge">
+        <svg viewBox="0 0 240 240">
+          <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+          <circle class="gauge-arc" id="cpuGaugeArc" cx="120" cy="120" r="100"
+            stroke-dasharray="628" stroke-dashoffset="628"></circle>
+        </svg>
+        <div class="gauge-center">
+          <div class="gauge-temp" id="cpuGaugeTemp">--</div>
+          <div class="gauge-unit">°C</div>
+        </div>
+      </div>
+      <div class="mode-chip" id="modeChip">no data</div>
+    </div>
+    <div class="stat-row"><span>Utilization</span><b id="cpuUtilVal">—</b></div>
+    <div class="stat-row"><span>Power Draw</span><b id="cpuPowerVal">—</b></div>
+    <div class="stat-row"><span>Clock Speed</span><b id="cpuClockVal">—</b></div>
+    <div class="stat-row"><span>Last Updated</span><b id="lastUpdated">—</b></div>
+  </div>
+
+  <footer>polling every 0.5s · data via /api/latest</footer>
+</div>
+
+<script>
+const COOL = getComputedStyle(document.documentElement).getPropertyValue('--cool').trim();
+const WARM = getComputedStyle(document.documentElement).getPropertyValue('--warm').trim();
+const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot').trim();
+const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
+
+// Thresholds tuned for typical components
+const T_MIN = 30, T_MAX = 100;
+const THRESH = [ [55, COOL], [70, WARM], [85, HOT], [999, CRIT] ];
+
+function colorForTemp(t){
+  for (const [max, c] of THRESH) if (t <= max) return c;
+  return CRIT;
+}
+
+function setGauge(arcId, tempId, temp, util){
+  const circumference = 2 * Math.PI * 100; // ~628
+  const pct = Math.max(0, Math.min(1, util / 100));
+  const offset = circumference * (1 - pct);
+  const arc = document.getElementById(arcId);
+  arc.style.strokeDasharray = circumference;
+  arc.style.strokeDashoffset = offset;
+  
+  const c = colorForTemp(temp);
+  arc.style.stroke = c;
+  
+  const tempEl = document.getElementById(tempId);
+  tempEl.style.color = c;
+  tempEl.textContent = temp > 0 ? temp.toFixed(1) : '--';
+  
+  arc.closest('.gauge').style.filter = `drop-shadow(0 0 16px ${c}33)`;
+}
+
+function setModeChip(mode){
+  const chip = document.getElementById('modeChip');
+  if (!chip) return;
+  if (!mode) {
+    chip.textContent = 'unknown';
+    chip.style.borderColor = '#7C8798';
+    chip.style.color = '#7C8798';
+    chip.style.boxShadow = 'none';
+    return;
+  }
+  chip.textContent = mode;
+  const lowerMode = mode.toLowerCase();
+  const c = lowerMode.includes('turbo') || lowerMode.includes('performance') ? HOT
+           : lowerMode.includes('quiet') || lowerMode.includes('power-saver') ? COOL
+           : WARM;
+  chip.style.borderColor = c;
+  chip.style.color = c;
+  chip.style.boxShadow = `0 0 16px ${c}33`;
+}
+
+async function refreshLatest(){
+  try{
+    const res = await fetch('/api/latest');
+    if (!res.ok) throw new Error('no data');
+    const d = await res.json();
+    document.getElementById('liveDot').classList.add('live');
+    document.getElementById('hostLabel').textContent = d.hostname ? d.hostname : 'connected';
+    
+    // CPU
+    const cpuTemp = typeof d.cpu_temp === 'number' ? d.cpu_temp : 0;
+    const cpuUtil = typeof d.cpu_util === 'number' ? d.cpu_util : 0;
+    setGauge('cpuGaugeArc', 'cpuGaugeTemp', cpuTemp, cpuUtil);
+    
+    document.getElementById('cpuUtilVal').textContent = typeof d.cpu_util === 'number' ? `${d.cpu_util.toFixed(0)}%` : '—';
+    document.getElementById('cpuPowerVal').textContent = typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : '—';
+    document.getElementById('cpuClockVal').textContent = typeof d.cpu_clock === 'number' ? `${d.cpu_clock.toFixed(0)} MHz` : '—';
+
+    // Info/mode
+    setModeChip(d.power_mode);
+    document.getElementById('lastUpdated').textContent = new Date(d.ts * 1000).toLocaleTimeString();
+  }catch(e){
+    document.getElementById('liveDot').classList.remove('live');
+    document.getElementById('hostLabel').textContent = 'waiting for data…';
+  }
+}
+
+// Initial load
+refreshLatest();
+
+// Polling interval
+setInterval(refreshLatest, 500);
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[Unit]
+Description=Thermal Watch client (CPU temp + power mode uploader)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=TW_SERVER_URL=https://your-backend.example.com
+Environment=TW_API_KEY=changeme
+Environment=TW_INTERVAL_SECONDS=30
+ExecStart=/usr/bin/python3 %h/thermalwatch/monitor.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
