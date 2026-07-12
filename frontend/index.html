@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SysVitals Dashboard</title>
+  <script>
+    // Simple static router redirecting based on auth state
+    const userId = localStorage.getItem('TW_USER_ID');
+    if (userId) {
+      window.location.href = 'dashboard.html';
+    } else {
+      window.location.href = 'login.html';
+    }
+  </script>
+</head>
+<body style="background: #0B0E14; color: #E9EEF3; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
+  <p>Redirecting to dashboard...</p>
+</body>
+</html>

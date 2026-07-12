@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SysVitals - Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+
+  <!-- GLOBAL HEADER -->
+  <header>
+    <div class="brand">
+      <span class="eyebrow" id="eyebrowLabel">// Thermal Watch</span>
+      <h1 id="brandTitle">System Vitals Monitor</h1>
+    </div>
+    <div class="hostline">
+      <span class="dot" id="liveDot"></span>
+      <span id="hostLabel">waiting for data…</span>
+      <div class="api-input-wrap">
+        <input type="text" id="apiUrlInput" placeholder="http://127.0.0.1:8000" title="FastAPI Backend URL" class="api-input" />
+      </div>
+    </div>
+  </header>
+
+  <!-- DEVICES DASHBOARD -->
+  <div id="dashboardContainer" style="display: none;">
+    <div class="dashboard-header">
+      <div class="user-badge">Logged in as <b id="dashboardUsername">—</b></div>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="handleLogout()">Logout</button>
+        <button class="btn-submit" style="padding: 8px 16px;" onclick="openAddDeviceModal()">Add Device +</button>
+      </div>
+    </div>
+    <div class="devices-grid" id="devicesList">
+      <!-- Device Cards populated by JS -->
+    </div>
+  </div>
+
+  <!-- DETAILED TELEMETRY PANEL -->
+  <div id="telemetryContainer" style="display: none;">
+    <div style="margin-bottom: 20px;">
+      <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="goBackToDevices()">&larr; Back to Devices</button>
+    </div>
+    <div class="panels-grid">
+      <!-- CPU LIVE PANEL -->
+      <div class="panel">
+        <div class="panel-title">CPU Telemetry</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="cpuGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="cpuGaugeTemp">--</div>
+              <div class="gauge-unit">°C</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="modeChip">no data</div>
+        </div>
+        <div class="stat-row"><span>Utilization</span><b id="cpuUtilVal">—</b></div>
+        <div class="stat-row"><span>Power Draw</span><b id="cpuPowerVal">—</b></div>
+        <div class="stat-row"><span>Clock Speed</span><b id="cpuClockVal">—</b></div>
+        <div class="stat-row"><span>Estimated Fan Speed</span><b id="cpuFanVal">—</b></div>
+        <div class="stat-row"><span>Last Updated</span><b id="lastUpdated">—</b></div>
+      </div>
+
+      <!-- GPU LIVE PANEL -->
+      <div class="panel">
+        <div class="panel-title">GPU Telemetry</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="gpuGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="gpuGaugeTemp">--</div>
+              <div class="gauge-unit">°C</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="gpuChip" style="text-transform:none;">no GPU detected</div>
+        </div>
+        <div class="stat-row"><span>GPU Utilization</span><b id="gpuUtilVal">—</b></div>
+        <div class="stat-row"><span>Power Draw</span><b id="gpuPowerVal">—</b></div>
+        <div class="stat-row"><span>VRAM Utilization</span><b id="gpuVramVal">—</b></div>
+        <div class="stat-row"><span>Estimated Fan Speed</span><b id="gpuFanVal">—</b></div>
+        <div class="stat-row"><span>GPU Last Awake</span><b id="gpuLastAwake">—</b></div>
+      </div>
+
+      <!-- POWER ANALYTICS PANEL -->
+      <div class="panel">
+        <div class="panel-title">Power Analytics</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="powerGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="powerGaugeVal" style="font-size:36px;">--</div>
+              <div class="gauge-unit">Watts</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="powerSourceChip">no data</div>
+        </div>
+        <div class="stat-row"><span>CPU Package Power</span><b id="cpuPowerVal2">—</b></div>
+        <div class="stat-row"><span>GPU Board Power</span><b id="gpuPowerVal2">—</b></div>
+        <div class="stat-row"><span>Battery Power Draw</span><b id="batteryPowerVal">—</b></div>
+        <div class="stat-row"><span>Battery Status</span><b id="batteryStatusVal">—</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD DEVICE MODAL -->
+  <div id="addDeviceModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div>
+        <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 4px;">Register New Device</h2>
+        <p style="font-size: 13px; color: var(--muted); margin: 0;">Add this device to your dashboard</p>
+      </div>
+      
+      <div id="modalForm">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="deviceNameInput">Device Name</label>
+          <input type="text" id="deviceNameInput" class="form-input" placeholder="e.g. Lenovo Laptop" />
+        </div>
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label for="deviceHostInput">Hostname (Optional)</label>
+          <input type="text" id="deviceHostInput" class="form-input" placeholder="e.g. Lenovo-Legion" />
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="closeAddDeviceModal()">Cancel</button>
+          <button class="btn-submit" style="padding: 8px 16px;" onclick="submitAddDevice()">Register</button>
+        </div>
+        <div class="error-msg" id="modalError" style="margin-top: 10px;"></div>
+      </div>
+
+      <div id="modalSuccess" style="display: none;">
+        <p style="font-size: 13px; margin: 0 0 12px; color: #5FD48A; font-weight: 600;">Device registered successfully!</p>
+        <p style="font-size: 12px; margin: 0 0 16px; color: var(--muted);">Copy this secret and paste it in your monitor client's <code>.env</code> as <code>TW_DEVICE_SECRET</code>. <b>This secret will only be shown once!</b></p>
+        <div class="secret-box">
+          <span class="secret-text" id="generatedSecretVal">sv_xxxxxx</span>
+          <button class="btn-copy" onclick="copyDeviceSecret()">Copy</button>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+          <button class="btn-submit" style="padding: 8px 16px;" onclick="finishAddDevice()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>polling active · SysVitals Supabase Engine</footer>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

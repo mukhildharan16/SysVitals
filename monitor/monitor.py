@@ -7,6 +7,9 @@ from typing import Optional
 
 # 1. Zero-dependency .env loader
 dotenv_path = Path(__file__).parent / ".env"
+if not dotenv_path.exists():
+    dotenv_path = Path(__file__).parent.parent / ".env"
+
 if dotenv_path.exists():
     with open(dotenv_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -16,9 +19,7 @@ if dotenv_path.exists():
             if "=" in line:
                 key, val = line.split("=", 1)
                 key = key.strip()
-                val = val.strip()
-                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                    val = val[1:-1]
+                val = val.strip().strip('"').strip("'")
                 os.environ[key] = val
 
 # 2. Third-party HTTP requests import

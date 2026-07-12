@@ -1,103 +1,95 @@
 # SysVitals
 
-A tiny system for watching a laptop's CPU temperature and power profile
-(quiet / balanced / performance / turbo) live from a website, plus history and computed stats.
+SysVitals is a clean, modern, real-time system monitoring application that tracks a laptop's CPU and GPU metrics (temperature, utilization, clock speed, and power draw) along with G-Helper power profiles and estimated fan speeds.
 
-Two pieces:
-- **client/** — a Python script that runs *on your laptop*, reads the CPU
-  temp + power profile every ~30s, and POSTs it to the backend.
-- **backend/** — a FastAPI app that stores readings (SQLite) and serves the
-  dashboard at `/`.
+---
 
-## 1. Run the backend
+## 1. Project Directory Structure
 
-```bash
-cd backend
-pip install -r requirements.txt
-export INGEST_API_KEY="pick-a-long-random-string"
-uvicorn main:app --host 0.0.0.0 --port 8000
+The repository is organized into three independent components:
+
+```
+SysVitals/
+├── frontend/             # Static SPA (HTML/CSS/JS) deployable to Cloudflare Pages
+│   ├── index.html        # Entry router (auth redirector)
+│   ├── login.html        # Login / Register screens
+│   ├── dashboard.html    # Devices lists & real-time telemetry gauges
+│   ├── css/
+│   │   └── style.css     # Unified UI styling
+│   └── js/
+│       ├── config.js     # Centralized API domain configuration
+│       └── app.js        # Polling & dashboard logic
+│
+├── backend/              # FastAPI application communicating with Supabase DB
+│   ├── main.py           # API endpoints (Auth, Device, Telemetry ingest)
+│   ├── database.py       # Supabase REST client initialization
+│   ├── models.py         # Request/Response schemas (Pydantic)
+│   ├── requirements.txt  # Server Python dependencies
+│   └── supabase_schema.sql
+│
+├── monitor/              # Local telemetry uploader client
+│   ├── monitor.py        # Telemetry collection script
+│   ├── requirements.txt  # Client Python dependencies
+│   └── .env.example      # Sample client environment setup
+│
+├── docs/                 # Detailed guides
+│   └── deployment.md     # Production deployment instructions
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
 
-Open `http://localhost:8000` — you'll see the dashboard (empty until the
-client sends data).
+---
 
-`INGEST_API_KEY` is the only thing standing between "just your laptop can
-post readings" and "anyone on the internet can post fake readings." Reads
-(the dashboard itself) are intentionally public — no login needed to view
-it — but writes require this key. Pick something long and random, e.g.:
+## 2. Local Development
 
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+### 1. Database Setup
+Ensure you have a Supabase project created. Run the contents of `backend/supabase_schema.sql` inside your Supabase project's **SQL Editor** to create the tables.
+
+### 2. Run the Backend Server
+Create a `.env` file in the root `SysVitals/` directory (or inside `backend/`):
+```env
+SUPABASE_URL="https://your-project-id.supabase.co"
+SUPABASE_KEY="your-supabase-service-role-secret-key"
 ```
 
-## 2. Run the client (on your Fedora laptop)
-
+Then, install dependencies and start the server:
 ```bash
-cd client
-pip install -r requirements.txt
-export TW_SERVER_URL="https://your-deployed-backend.example.com"
-export TW_API_KEY="the same string as INGEST_API_KEY above"
-python3 monitor.py
+pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+The server will start listening at `http://127.0.0.1:8000`.
+
+### 3. Run the Frontend Dashboard
+Since the frontend is purely static, you can run it simply by opening `frontend/index.html` in any browser! Or run a local static server:
+```bash
+npx serve frontend
+# or
+python -m http.server -d frontend 3000
+```
+It will automatically connect to your local backend API running on port `8000` (defined in `frontend/js/config.js`).
+
+### 4. Run the Telemetry Monitor
+Create a `.env` in the root `SysVitals/` directory (or inside `monitor/`):
+```env
+TW_SERVER_URL="http://127.0.0.1:8000"
+TW_DEVICE_SECRET="your-device-secret-from-dashboard"
+TW_HOSTNAME="My-Desktop"
+TW_INTERVAL_SECONDS=0.5
 ```
 
-It reads CPU temp via `psutil`/lm-sensors (falls back to
-`/sys/class/thermal`), and the power profile via `powerprofilesctl get`
-(GNOME's power-profiles-daemon — this is what Fedora's Settings > Power
-panel uses). If it's in `performance` mode and CPU boost is on
-(`/sys/devices/system/cpu/cpufreq/boost`), it reports `turbo` instead.
-
-### Run it continuously (systemd user service)
-
+Install client dependencies and run:
 ```bash
-mkdir -p ~/thermalwatch
-cp client/monitor.py ~/thermalwatch/
-cp client/thermalwatch.service ~/.config/systemd/user/
-# edit ~/.config/systemd/user/thermalwatch.service with your real
-# TW_SERVER_URL and TW_API_KEY first
-systemctl --user daemon-reload
-systemctl --user enable --now thermalwatch.service
-systemctl --user status thermalwatch.service   # check it's running
-journalctl --user -u thermalwatch.service -f   # watch it send readings
+pip install -r monitor/requirements.txt
+python monitor/monitor.py
 ```
+It will begin reporting system telemetry to the backend twice per second.
 
-## 3. Put the backend on the public internet
+---
 
-Since you want it reachable from anywhere, a few options, roughly cheapest
-to most hands-off:
+## 3. Production Deployment
 
-- **A small VPS** (Hetzner ~€4/mo, DigitalOcean/Linode ~$4-6/mo): run
-  `uvicorn` behind `systemd` + `nginx` (or just expose the port). SQLite
-  works fine here since the disk is persistent. Most control, a bit more
-  setup.
-- **Fly.io**: free-ish tier, supports persistent **volumes** — important,
-  because without one the SQLite file gets wiped on every redeploy.
-  Attach a small volume and point `DB_PATH` at it.
-- **Render**: easy to deploy, but its free tier disk is *ephemeral* — your
-  history will vanish on redeploys/restarts unless you pay for a persistent
-  disk add-on. Fine for testing, not for long-term history.
-
-Whichever you pick, just set `INGEST_API_KEY` (and optionally `DB_PATH`) as
-environment variables on that platform, same as running it locally.
-
-## What the dashboard computes
-
-- **Live gauge**: current temp, color-coded (cool → warm → hot → critical),
-  current power mode.
-- **History chart**: 1h / 6h / 24h / 7d views.
-- **Trend**: °C/hour drift over the selected window (comparing the first
-  quarter of readings to the last quarter).
-- **Time-in-mode**: what % of the selected window was spent in each power
-  mode, and the average temp while in that mode — useful for seeing e.g.
-  "turbo mode runs ~15°C hotter and I'm in it 40% of the time."
-
-## Notes / things you may want to change
-
-- Temp thresholds for the gauge colors (55 / 70 / 85 °C) are set in
-  `backend/static/index.html` near the top of the `<script>` block —
-  adjust to whatever's normal for your CPU.
-- The client currently reports one machine at a time; the `hostname` field
-  is already there in the schema if you ever want to extend this to
-  multiple machines with a dropdown/filter.
-- No auth on the dashboard itself (by design, since you said public
-  internet + wanted it simple). If you'd rather it not be fully public,
-  say so and I can add a simple password gate.
+Refer to **[docs/deployment.md](file:///c:/Projects/SysVitals/docs/deployment.md)** for full, step-by-step guidance on deploying:
+* **Frontend**: Deploying the `/frontend` directory to **Cloudflare Pages**.
+* **Backend**: Hosting the `/backend` FastAPI service on **Render**, **Railway**, or **Fly.io**.
+* **Database**: Creating tables and setting up service credentials.

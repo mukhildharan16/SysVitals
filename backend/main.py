@@ -1,117 +1,33 @@
 """
-SysVitals — backend with Supabase Auth & Device Management
+SysVitals — FastAPI Backend
 """
 
-import os
 import time
-from pathlib import Path
-from typing import Optional
 from datetime import datetime, timezone
-
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, Field
 
+from database import query_supabase
+from models import UserAuth, DeviceRegister, TelemetryIngest
 import bcrypt
-import requests
-
-# Force urllib3 to only use IPv4 to prevent 20-second connection timeouts on systems with broken IPv6 routes
-import socket
-import urllib3.util.connection
-urllib3.util.connection.allowed_gai_family = lambda: socket.AF_INET
-
-# Load environment variables from .env file if it exists
-dotenv_path = Path(__file__).parent / ".env"
-if dotenv_path.exists():
-    with open(dotenv_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                key, val = line.split("=", 1)
-                key = key.strip()
-                val = val.strip()
-                # Remove surrounding quotes
-                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
-                    val = val[1:-1]
-                os.environ[key] = val
-
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    print("Warning: SUPABASE_URL or SUPABASE_KEY not set in .env. Database operations will fail.")
-
-def query_supabase(path: str, method: str = "GET", json_data: dict = None, params: dict = None) -> list:
-    """
-    Query Supabase REST API directly via requests.
-    Prevents httpx/anyio event loop deadlocks in synchronous FastAPI workers.
-    """
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise HTTPException(status_code=500, detail="Database credentials not configured")
-        
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"  # Returns full representation of inserted/patched records
-    }
-    url = f"{SUPABASE_URL}/rest/v1/{path}"
-    try:
-        r = requests.request(method, url, headers=headers, json=json_data, params=params, timeout=10)
-        r.raise_for_status()
-        if r.text:
-            return r.json()
-        return []
-    except Exception as e:
-        print(f"Supabase REST error: {e}")
-        # Extract body message if exists
-        try:
-            detail = r.json().get("message", str(e))
-        except Exception:
-            detail = str(e)
-        raise HTTPException(status_code=500, detail=f"Database query failed: {detail}")
 
 app = FastAPI(title="SysVitals")
 
+# Configure CORS Middleware
+# In production, replace ["*"] with your specific production domains (e.g. ["https://sysvitals.pages.dev"])
+ALLOWED_ORIGINS = [
+    "*",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- Pydantic Request Models ---
-
-class UserAuth(BaseModel):
-    username: str
-    password: str
-
-class DeviceRegister(BaseModel):
-    user_id: str
-    device_name: str
-    hostname: Optional[str] = None
-
-class TelemetryIngest(BaseModel):
-    device_secret: str
-    cpu_temp: Optional[float] = None
-    cpu_power: Optional[float] = None
-    cpu_clock: Optional[float] = None
-    cpu_util: Optional[float] = None
-    gpu_name: Optional[str] = None
-    gpu_temp: Optional[float] = None
-    gpu_power: Optional[float] = None
-    gpu_util: Optional[float] = None
-    gpu_mem_used: Optional[float] = None
-    gpu_mem_total: Optional[float] = None
-    gpu_active: Optional[bool] = None
-    ac_plugged: Optional[bool] = None
-    battery_power: Optional[float] = None
-    battery_voltage: Optional[float] = None
-    battery_level: Optional[float] = None
-    power_mode: str
 
 # In-memory storage for the latest readings by device_id
 latest_reading = {}
@@ -284,10 +200,3 @@ def get_device_latest(device_id: str):
     }
     latest_reading[device_id] = res_data
     return res_data
-
-@app.get("/", response_class=HTMLResponse)
-def read_root():
-    html_path = Path(__file__).parent / "index.html"
-    if html_path.exists():
-        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
-    raise HTTPException(status_code=404, detail="index.html not found")
