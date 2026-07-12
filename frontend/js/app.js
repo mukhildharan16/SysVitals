@@ -3,37 +3,65 @@ const WARM = getComputedStyle(document.documentElement).getPropertyValue('--warm
 const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot').trim();
 const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
 
-// Parse backend URL query parameter if available (for static deployments)
+function normalizeBackendUrl(value) {
+  let url = String(value || '').trim();
+  if (!url) return '';
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url.replace(/\/+$/, '');
+}
+
+// Parse an explicit backend URL query parameter (useful for local development).
 const urlParams = new URLSearchParams(window.location.search);
 const queryBackend = urlParams.get('backend');
 if (queryBackend) {
-  let formattedUrl = queryBackend.trim();
+  const formattedUrl = normalizeBackendUrl(queryBackend);
   if (formattedUrl) {
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-      formattedUrl = 'http://' + formattedUrl;
-    }
-    if (formattedUrl.endsWith('/')) {
-      formattedUrl = formattedUrl.slice(0, -1);
-    }
     localStorage.setItem('TW_BACKEND_URL', formattedUrl);
   }
 }
 
-// Fallback to central config API_BASE_URL if local storage is empty
-let backendUrl = localStorage.getItem('TW_BACKEND_URL') || API_BASE_URL;
+// A stale local HTTP URL cannot work from an HTTPS Cloudflare Pages site. In
+// production, safely fall back to the configured API instead of failing with a
+// browser mixed-content "Network error".
+const storedBackendUrl = normalizeBackendUrl(localStorage.getItem('TW_BACKEND_URL'));
+const isSecurePage = window.location.protocol === 'https:';
+const safeStoredBackendUrl = isSecurePage && storedBackendUrl.startsWith('http://')
+  ? ''
+  : storedBackendUrl;
+let backendUrl = safeStoredBackendUrl || normalizeBackendUrl(API_BASE_URL);
+if (!safeStoredBackendUrl && storedBackendUrl) localStorage.removeItem('TW_BACKEND_URL');
+
+async function apiFetch(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    return await fetch(`${backendUrl}${path}`, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function readApiBody(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return response.json();
+  return {};
+}
+
+function networkErrorMessage(error, action) {
+  if (error && error.name === 'AbortError') {
+    return `API timed out during ${action}. Please try again.`;
+  }
+  return `Cannot reach the SysVitals API (${backendUrl}). Please try again shortly.`;
+}
 
 const apiUrlInput = document.getElementById('apiUrlInput');
 if (apiUrlInput) {
   apiUrlInput.value = backendUrl;
   apiUrlInput.addEventListener('change', (e) => {
-    let url = e.target.value.trim();
-    if (url) {
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = 'http://' + url;
-      }
-      if (url.endsWith('/')) {
-        url = url.slice(0, -1);
-      }
+    const url = normalizeBackendUrl(e.target.value);
+    if (isSecurePage && url.startsWith('http://')) {
+      e.target.value = backendUrl;
+      return;
     }
     apiUrlInput.value = url;
     localStorage.setItem('TW_BACKEND_URL', url);
@@ -232,12 +260,12 @@ async function handleRegister() {
   }
 
   try {
-    const res = await fetch(`${backendUrl}/api/register`, {
+    const res = await apiFetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: user, password: pass })
     });
-    const d = await res.json();
+    const d = await readApiBody(res);
     if (!res.ok) {
       if (errEl) errEl.textContent = d.detail || 'Registration failed';
       return;
@@ -252,7 +280,7 @@ async function handleRegister() {
       loginErrorEl.textContent = 'Account created! Please login.';
     }
   } catch (err) {
-    if (errEl) errEl.textContent = 'Network error during registration';
+    if (errEl) errEl.textContent = networkErrorMessage(err, 'registration');
   }
 }
 
@@ -274,12 +302,12 @@ async function handleLogin() {
   }
 
   try {
-    const res = await fetch(`${backendUrl}/api/login`, {
+    const res = await apiFetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: user, password: pass })
     });
-    const d = await res.json();
+    const d = await readApiBody(res);
     if (!res.ok) {
       if (errEl) errEl.textContent = d.detail || 'Invalid credentials';
       return;
@@ -291,7 +319,7 @@ async function handleLogin() {
     localStorage.setItem('TW_USERNAME', username);
     window.location.href = 'dashboard.html';
   } catch (err) {
-    if (errEl) errEl.textContent = 'Network error during login';
+    if (errEl) errEl.textContent = networkErrorMessage(err, 'login');
   }
 }
 

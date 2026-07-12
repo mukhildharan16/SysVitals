@@ -38,6 +38,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health():
+    """Lightweight probe for the hosting platform and Cloudflare origin checks."""
+    return {"status": "ok"}
+
 # In-memory storage for the latest readings by device_id
 latest_reading = {}
 
