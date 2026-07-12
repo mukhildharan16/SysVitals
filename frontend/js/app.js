@@ -33,7 +33,8 @@ if (!safeStoredBackendUrl && storedBackendUrl) localStorage.removeItem('TW_BACKE
 
 async function apiFetch(path, options = {}) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  // Render's free service can take about a minute to wake after being idle.
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
   try {
     return await fetch(`${backendUrl}${path}`, { ...options, signal: controller.signal });
   } finally {
