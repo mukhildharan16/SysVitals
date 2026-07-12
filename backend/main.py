@@ -3,12 +3,21 @@ SysVitals — FastAPI Backend
 """
 
 import time
+import sys
+import os
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import query_supabase
-from models import UserAuth, DeviceRegister, TelemetryIngest
+# Add current directory to path to allow running from both root and subfolders
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from .database import query_supabase
+    from .models import UserAuth, DeviceRegister, TelemetryIngest
+except ImportError:
+    from database import query_supabase
+    from models import UserAuth, DeviceRegister, TelemetryIngest
 import bcrypt
 
 app = FastAPI(title="SysVitals")
