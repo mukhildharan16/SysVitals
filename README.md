@@ -1,6 +1,6 @@
 # SysVitals
 
-SysVitals is a clean, modern, real-time system monitoring application that tracks a laptop's CPU and GPU metrics (temperature, utilization, clock speed, and power draw) along with G-Helper power profiles and estimated fan speeds.
+SysVitals is a clean, modern, real-time system monitoring application that tracks a laptop's CPU and GPU metrics (temperature, utilization, clock speed, and power draw) along with power profiles and estimated fan speeds.
 
 ---
 
