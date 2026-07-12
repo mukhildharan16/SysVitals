@@ -1,8 +1,7 @@
-# Thermal Watch
+# SysVitals
 
 A tiny system for watching a laptop's CPU temperature and power profile
-(quiet / balanced / performance / turbo) live from a website, plus history
-and computed stats.
+(quiet / balanced / performance / turbo) live from a website, plus history and computed stats.
 
 Two pieces:
 - **client/** — a Python script that runs *on your laptop*, reads the CPU

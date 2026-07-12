@@ -1,0 +1,1182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SysVitals Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0E14;
+    --panel:#12161F;
+    --panel-2:#161B26;
+    --border:#1E2530;
+    --text:#E9EEF3;
+    --muted:#7C8798;
+    --cool:#4FB8D6;
+    --warm:#E8A93D;
+    --hot:#E8563D;
+    --crit:#FF3B3B;
+    --accent: var(--cool);
+    --glow: 0 0 24px rgba(79,184,214,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(79,184,214,0.06), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(232,86,61,0.05), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:1200px;margin:0 auto;}
+  
+  header{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    margin-bottom:28px;flex-wrap:wrap;gap:12px;
+  }
+  .brand{display:flex;flex-direction:column;gap:4px;}
+  .brand .eyebrow{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;
+    color:var(--muted);text-transform:uppercase;
+  }
+  .brand h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-0.01em;}
+  .hostline{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);
+    display:flex;align-items:center;gap:8px;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+  .dot.live{background:#5FD48A;box-shadow:0 0 8px rgba(95,212,138,0.7);}
+  .api-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+  }
+  .api-input {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    width: 200px;
+    outline: none;
+    transition: border-color .3s ease, box-shadow .3s ease;
+  }
+  .api-input:focus {
+    border-color: var(--cool);
+    box-shadow: 0 0 8px rgba(95, 212, 138, 0.2);
+  }
+
+  /* Auth Screen Styling */
+  .auth-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 70vh;
+  }
+  .auth-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 36px;
+    width: 100%;
+    max-width: 420px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .auth-card h2 {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .form-group label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .form-input {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .3s ease, box-shadow .3s ease;
+  }
+  .form-input:focus {
+    border-color: var(--cool);
+    box-shadow: 0 0 12px rgba(79, 184, 214, 0.15);
+  }
+  .btn-submit {
+    background: var(--cool);
+    color: #0d121b;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter .2s ease, transform .2s ease;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn-submit:hover {
+    filter: brightness(1.1);
+  }
+  .btn-submit:active {
+    transform: scale(0.98);
+  }
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover {
+    background: var(--panel-2);
+  }
+  .auth-toggle {
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .auth-toggle span {
+    color: var(--cool);
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .auth-toggle span:hover {
+    text-decoration: underline;
+  }
+  .error-msg {
+    color: var(--hot);
+    font-size: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    text-align: center;
+    min-height: 16px;
+  }
+
+  /* Devices Dashboard Styling */
+  .dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .user-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .user-badge b {
+    color: var(--text);
+  }
+  .devices-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+    margin-top: 12px;
+  }
+  .device-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+    position: relative;
+  }
+  .device-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--cool);
+  }
+  .device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .device-name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .device-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 99px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+  }
+  .device-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+  .device-details span {
+    display: flex;
+    justify-content: space-between;
+  }
+  .device-details b {
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .device-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  /* Telemetry View Layout */
+  .panels-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap:24px;
+    margin-bottom:24px;
+  }
+  @media(max-width:992px){
+    .panels-grid{
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  @media(max-width:768px){
+    .panels-grid{
+      grid-template-columns: 1fr;
+    }
+  }
+  .panel{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:26px;position:relative;overflow:hidden;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+  .panel-title{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+    color:var(--muted);text-transform:uppercase;margin-bottom:16px;
+    font-weight: 600;
+  }
+
+  /* Gauge */
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:16px;}
+  .gauge{position:relative;width:210px;height:210px;}
+  .gauge svg{width:100%;height:100%;transform:rotate(-90deg);}
+  .gauge-track{fill:none;stroke:var(--panel-2);stroke-width:12;}
+  .gauge-arc{fill:none;stroke-width:12;stroke-linecap:round;transition:stroke-dashoffset 0.6s ease, stroke 0.6s ease;}
+  .gauge-center{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:2px;
+  }
+  .gauge-temp{font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:600;line-height:1;transition:color .6s ease;}
+  .gauge-unit{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--muted);}
+  .mode-chip{
+    margin-top:10px;padding:6px 14px;border-radius:999px;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--border);
+    background:var(--panel-2);transition:box-shadow .6s ease, border-color .6s ease, color .6s ease;
+  }
+  .stat-row{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);
+    padding:10px 0;border-top:1px solid var(--border);}
+  .stat-row b{color:var(--text);font-weight:600;font-family:'IBM Plex Mono',monospace;}
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  .modal-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px;
+    width: 100%;
+    max-width: 460px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .secret-box {
+    background: var(--panel-2);
+    border: 1px dashed var(--cool);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--cool);
+    word-break: break-all;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .secret-text {
+    flex: 1;
+  }
+  .btn-copy {
+    background: transparent;
+    border: 1px solid var(--cool);
+    color: var(--cool);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .btn-copy:hover {
+    background: rgba(79, 184, 214, 0.1);
+  }
+
+  footer{margin-top:28px;text-align:center;color:var(--muted);font-size:11px;font-family:'IBM Plex Mono',monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- GLOBAL HEADER -->
+  <header>
+    <div class="brand">
+      <span class="eyebrow" id="eyebrowLabel">// Thermal Watch</span>
+      <h1 id="brandTitle">System Vitals Monitor</h1>
+    </div>
+    <div class="hostline">
+      <span class="dot" id="liveDot"></span>
+      <span id="hostLabel">waiting for data…</span>
+      <div class="api-input-wrap">
+        <input type="text" id="apiUrlInput" placeholder="http://127.0.0.1:8000" title="FastAPI Backend URL" class="api-input" />
+      </div>
+    </div>
+  </header>
+
+  <!-- 1. AUTH SCREEN -->
+  <div id="authContainer" class="auth-wrap">
+    <div class="auth-card" id="loginCard">
+      <div>
+        <h2>Login</h2>
+        <p>Access your devices and system vitals</p>
+      </div>
+      <div class="form-group">
+        <label for="loginUser">Username</label>
+        <input type="text" id="loginUser" class="form-input" placeholder="Enter username" />
+      </div>
+      <div class="form-group">
+        <label for="loginPass">Password</label>
+        <input type="password" id="loginPass" class="form-input" placeholder="Enter password" />
+      </div>
+      <button class="btn-submit" onclick="handleLogin()">Login</button>
+      <div class="error-msg" id="loginError"></div>
+      <div class="auth-toggle">
+        Need an account? <span onclick="toggleAuth(false)">Create Account</span>
+      </div>
+    </div>
+
+    <div class="auth-card" id="registerCard" style="display: none;">
+      <div>
+        <h2>Create Account</h2>
+        <p>Register to monitor multiple devices</p>
+      </div>
+      <div class="form-group">
+        <label for="regUser">Username</label>
+        <input type="text" id="regUser" class="form-input" placeholder="Choose a username" />
+      </div>
+      <div class="form-group">
+        <label for="regPass">Password</label>
+        <input type="password" id="regPass" class="form-input" placeholder="Choose a password" />
+      </div>
+      <div class="form-group">
+        <label for="regConfirm">Confirm Password</label>
+        <input type="password" id="regConfirm" class="form-input" placeholder="Confirm password" />
+      </div>
+      <button class="btn-submit" onclick="handleRegister()">Create Account</button>
+      <div class="error-msg" id="regError"></div>
+      <div class="auth-toggle">
+        Already have an account? <span onclick="toggleAuth(true)">Login</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. DEVICES DASHBOARD -->
+  <div id="dashboardContainer" style="display: none;">
+    <div class="dashboard-header">
+      <div class="user-badge">Logged in as <b id="dashboardUsername">—</b></div>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="handleLogout()">Logout</button>
+        <button class="btn-submit" style="padding: 8px 16px;" onclick="openAddDeviceModal()">Add Device +</button>
+      </div>
+    </div>
+    <div class="devices-grid" id="devicesList">
+      <!-- Device Cards populated by JS -->
+    </div>
+  </div>
+
+  <!-- 3. DETAILED TELEMETRY PANEL -->
+  <div id="telemetryContainer" style="display: none;">
+    <div style="margin-bottom: 20px;">
+      <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="goBackToDevices()">&larr; Back to Devices</button>
+    </div>
+    <div class="panels-grid">
+      <!-- CPU LIVE PANEL -->
+      <div class="panel">
+        <div class="panel-title">CPU Telemetry</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="cpuGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="cpuGaugeTemp">--</div>
+              <div class="gauge-unit">°C</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="modeChip">no data</div>
+        </div>
+        <div class="stat-row"><span>Utilization</span><b id="cpuUtilVal">—</b></div>
+        <div class="stat-row"><span>Power Draw</span><b id="cpuPowerVal">—</b></div>
+        <div class="stat-row"><span>Clock Speed</span><b id="cpuClockVal">—</b></div>
+        <div class="stat-row"><span>Estimated Fan Speed</span><b id="cpuFanVal">—</b></div>
+        <div class="stat-row"><span>Last Updated</span><b id="lastUpdated">—</b></div>
+      </div>
+
+      <!-- GPU LIVE PANEL -->
+      <div class="panel">
+        <div class="panel-title">GPU Telemetry</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="gpuGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="gpuGaugeTemp">--</div>
+              <div class="gauge-unit">°C</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="gpuChip" style="text-transform:none;">no GPU detected</div>
+        </div>
+        <div class="stat-row"><span>GPU Utilization</span><b id="gpuUtilVal">—</b></div>
+        <div class="stat-row"><span>Power Draw</span><b id="gpuPowerVal">—</b></div>
+        <div class="stat-row"><span>VRAM Utilization</span><b id="gpuVramVal">—</b></div>
+        <div class="stat-row"><span>Estimated Fan Speed</span><b id="gpuFanVal">—</b></div>
+        <div class="stat-row"><span>GPU Last Awake</span><b id="gpuLastAwake">—</b></div>
+      </div>
+
+      <!-- POWER ANALYTICS PANEL -->
+      <div class="panel">
+        <div class="panel-title">Power Analytics</div>
+        <div class="gauge-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 240 240">
+              <circle class="gauge-track" cx="120" cy="120" r="100"></circle>
+              <circle class="gauge-arc" id="powerGaugeArc" cx="120" cy="120" r="100"
+                stroke-dasharray="628" stroke-dashoffset="628"></circle>
+            </svg>
+            <div class="gauge-center">
+              <div class="gauge-temp" id="powerGaugeVal" style="font-size:36px;">--</div>
+              <div class="gauge-unit">Watts</div>
+            </div>
+          </div>
+          <div class="mode-chip" id="powerSourceChip">no data</div>
+        </div>
+        <div class="stat-row"><span>CPU Package Power</span><b id="cpuPowerVal2">—</b></div>
+        <div class="stat-row"><span>GPU Board Power</span><b id="gpuPowerVal2">—</b></div>
+        <div class="stat-row"><span>Battery Power Draw</span><b id="batteryPowerVal">—</b></div>
+        <div class="stat-row"><span>Battery Status</span><b id="batteryStatusVal">—</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. ADD DEVICE MODAL -->
+  <div id="addDeviceModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div>
+        <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 4px;">Register New Device</h2>
+        <p style="font-size: 13px; color: var(--muted); margin: 0;">Add this device to your dashboard</p>
+      </div>
+      
+      <div id="modalForm">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label for="deviceNameInput">Device Name</label>
+          <input type="text" id="deviceNameInput" class="form-input" placeholder="e.g. Lenovo Laptop" />
+        </div>
+        <div class="form-group" style="margin-bottom: 20px;">
+          <label for="deviceHostInput">Hostname (Optional)</label>
+          <input type="text" id="deviceHostInput" class="form-input" placeholder="e.g. Lenovo-Legion" />
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="closeAddDeviceModal()">Cancel</button>
+          <button class="btn-submit" style="padding: 8px 16px;" onclick="submitAddDevice()">Register</button>
+        </div>
+        <div class="error-msg" id="modalError" style="margin-top: 10px;"></div>
+      </div>
+
+      <div id="modalSuccess" style="display: none;">
+        <p style="font-size: 13px; margin: 0 0 12px; color: #5FD48A; font-weight: 600;">Device registered successfully!</p>
+        <p style="font-size: 12px; margin: 0 0 16px; color: var(--muted);">Copy this secret and paste it in your monitor client's <code>.env</code> as <code>TW_DEVICE_SECRET</code>. <b>This secret will only be shown once!</b></p>
+        <div class="secret-box">
+          <span class="secret-text" id="generatedSecretVal">sv_xxxxxx</span>
+          <button class="btn-copy" onclick="copyDeviceSecret()">Copy</button>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+          <button class="btn-submit" style="padding: 8px 16px;" onclick="finishAddDevice()">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>polling active · SysVitals Supabase Engine</footer>
+</div>
+
+<script>
+const COOL = getComputedStyle(document.documentElement).getPropertyValue('--cool').trim();
+const WARM = getComputedStyle(document.documentElement).getPropertyValue('--warm').trim();
+const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot').trim();
+const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
+
+// Parse backend URL query parameter if available (for static deployments)
+const urlParams = new URLSearchParams(window.location.search);
+const queryBackend = urlParams.get('backend');
+if (queryBackend) {
+  let formattedUrl = queryBackend.trim();
+  if (formattedUrl) {
+    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+      formattedUrl = 'http://' + formattedUrl;
+    }
+    if (formattedUrl.endsWith('/')) {
+      formattedUrl = formattedUrl.slice(0, -1);
+    }
+    localStorage.setItem('TW_BACKEND_URL', formattedUrl);
+  }
+}
+
+let backendUrl = localStorage.getItem('TW_BACKEND_URL');
+if (backendUrl === null) {
+  const isServedByFastAPI = (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+                            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
+                            (window.location.port !== '');
+  backendUrl = isServedByFastAPI ? '' : 'http://127.0.0.1:8000';
+}
+const apiUrlInput = document.getElementById('apiUrlInput');
+if (apiUrlInput) {
+  apiUrlInput.value = backendUrl;
+  apiUrlInput.addEventListener('change', (e) => {
+    let url = e.target.value.trim();
+    if (url) {
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+      }
+      if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+      }
+    }
+    apiUrlInput.value = url;
+    localStorage.setItem('TW_BACKEND_URL', url);
+    backendUrl = url;
+    initView();
+  });
+}
+
+// Session State
+let userId = localStorage.getItem('TW_USER_ID') || '';
+let username = localStorage.getItem('TW_USERNAME') || '';
+let activeDeviceId = null;
+let telemetryTimer = null;
+let devicesTimer = null;
+let refreshInProgress = false;
+let devicesLoadInProgress = false;
+
+// Thresholds tuned for typical components
+const T_MIN = 30, T_MAX = 100;
+const CPU_THRESH = [ [70, COOL], [80, WARM], [90, HOT], [999, CRIT] ];
+const GPU_THRESH = [ [60, COOL], [70, WARM], [80, HOT], [999, CRIT] ];
+const P_THRESH = [ [20, COOL], [40, WARM], [60, HOT], [999, CRIT] ];
+
+const FAN_CURVES = {
+  silent: {
+    cpu: [[0, 0], [50, 0], [60, 2200], [70, 2600], [80, 3000], [90, 3400], [100, 3600], [120, 3600]],
+    gpu: [[0, 0], [50, 0], [60, 2200], [70, 2600], [80, 3200], [90, 3600], [100, 3800], [120, 3800]]
+  },
+  balanced: {
+    cpu: [[0, 0], [40, 0], [50, 2200], [60, 2400], [70, 2800], [80, 3200], [90, 3800], [100, 4400], [120, 4400]],
+    gpu: [[0, 0], [40, 0], [50, 2200], [60, 2400], [70, 2900], [80, 3500], [90, 4100], [100, 4600], [120, 4600]]
+  },
+  turbo: {
+    cpu: [[0, 2200], [20, 2200], [50, 2600], [60, 3000], [70, 3400], [80, 4000], [90, 4600], [100, 5000], [120, 5000]],
+    gpu: [[0, 2200], [20, 2200], [50, 2600], [60, 3000], [70, 3500], [80, 4200], [90, 4800], [100, 5200], [120, 5200]]
+  }
+};
+
+function getFanSpeed(mode, temp, isGpu) {
+  let profile = 'balanced';
+  const m = String(mode || '').toLowerCase();
+  if (m.includes('silent') || m.includes('quiet') || m.includes('power-saver')) {
+    profile = 'silent';
+  } else if (m.includes('turbo') || m.includes('performance')) {
+    profile = 'turbo';
+  }
+  
+  const curve = isGpu ? FAN_CURVES[profile].gpu : FAN_CURVES[profile].cpu;
+  
+  if (temp <= curve[0][0]) return curve[0][1];
+  if (temp >= curve[curve.length - 1][0]) return curve[curve.length - 1][1];
+  
+  for (let i = 0; i < curve.length - 1; i++) {
+    const [t0, r0] = curve[i];
+    const [t1, r1] = curve[i+1];
+    if (temp >= t0 && temp <= t1) {
+      const pct = (temp - t0) / (t1 - t0);
+      return Math.round(r0 + pct * (r1 - r0));
+    }
+  }
+  return 0;
+}
+
+function colorForCPUTemp(t){
+  for (const [max, c] of CPU_THRESH) if (t <= max) return c;
+  return CRIT;
+}
+
+function colorForGPUTemp(t){
+  for (const [max, c] of GPU_THRESH) if (t <= max) return c;
+  return CRIT;
+}
+
+function colorForPower(p){
+  for (const [max, c] of P_THRESH) if (p <= max) return c;
+  return CRIT;
+}
+
+function setGauge(arcId, tempId, temp, isGpu = false){
+  const circumference = 2 * Math.PI * 100; // ~628
+  const maxTemp = isGpu ? 90 : 105;
+  const pct = Math.max(0, Math.min(1, temp / maxTemp));
+  const offset = circumference * (1 - pct);
+  const arc = document.getElementById(arcId);
+  if (!arc) return;
+  arc.style.strokeDasharray = circumference;
+  arc.style.strokeDashoffset = offset;
+  
+  const c = isGpu ? colorForGPUTemp(temp) : colorForCPUTemp(temp);
+  arc.style.stroke = c;
+  
+  const tempEl = document.getElementById(tempId);
+  if (tempEl) {
+    tempEl.style.color = c;
+    tempEl.textContent = temp > 0 ? temp.toFixed(1) : '--';
+  }
+  
+  const parent = arc.closest('.gauge');
+  if (parent) {
+    parent.style.filter = `drop-shadow(0 0 16px ${c}33)`;
+  }
+}
+
+// Power gauge setup
+function setPowerGauge(arcId, valId, power){
+  const circumference = 2 * Math.PI * 100; // ~628
+  const pct = Math.max(0, Math.min(1, power / 170));
+  const offset = circumference * (1 - pct);
+  const arc = document.getElementById(arcId);
+  if (!arc) return;
+  arc.style.strokeDasharray = circumference;
+  arc.style.strokeDashoffset = offset;
+  
+  const c = colorForPower(power);
+  arc.style.stroke = c;
+  
+  const valEl = document.getElementById(valId);
+  if (valEl) {
+    valEl.style.color = c;
+    valEl.textContent = power > 0 ? power.toFixed(1) : '--';
+  }
+  
+  const parent = arc.closest('.gauge');
+  if (parent) {
+    parent.style.filter = `drop-shadow(0 0 16px ${c}33)`;
+  }
+}
+
+function setModeChip(mode){
+  const chip = document.getElementById('modeChip');
+  if (!chip) return;
+  if (!mode) {
+    chip.textContent = 'unknown';
+    chip.style.borderColor = '#7C8798';
+    chip.style.color = '#7C8798';
+    chip.style.boxShadow = 'none';
+    return;
+  }
+  chip.textContent = mode;
+  const lowerMode = mode.toLowerCase();
+  const c = lowerMode.includes('turbo') || lowerMode.includes('performance') ? HOT
+           : lowerMode.includes('quiet') || lowerMode.includes('power-saver') ? COOL
+           : WARM;
+  chip.style.borderColor = c;
+  chip.style.color = c;
+  chip.style.boxShadow = `0 0 16px ${c}33`;
+}
+
+// Navigation & Auth Flow
+
+function toggleAuth(showLogin) {
+  document.getElementById('loginCard').style.display = showLogin ? 'flex' : 'none';
+  document.getElementById('registerCard').style.display = showLogin ? 'none' : 'flex';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('regError').textContent = '';
+}
+
+async function handleRegister() {
+  const user = document.getElementById('regUser').value.trim();
+  const pass = document.getElementById('regPass').value;
+  const confirm = document.getElementById('regConfirm').value;
+  const errEl = document.getElementById('regError');
+  errEl.textContent = '';
+
+  if (!user || !pass) {
+    errEl.textContent = 'Username and password required';
+    return;
+  }
+  if (pass !== confirm) {
+    errEl.textContent = 'Passwords do not match';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${backendUrl}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      errEl.textContent = d.detail || 'Registration failed';
+      return;
+    }
+    // Switch to login
+    toggleAuth(true);
+    document.getElementById('loginUser').value = user;
+    document.getElementById('loginError').style.color = '#5FD48A';
+    document.getElementById('loginError').textContent = 'Account created! Please login.';
+  } catch (err) {
+    errEl.textContent = 'Network error during registration';
+  }
+}
+
+async function handleLogin() {
+  const user = document.getElementById('loginUser').value.trim();
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  errEl.style.color = varName('--hot');
+  errEl.textContent = '';
+
+  if (!user || !pass) {
+    errEl.textContent = 'Username and password required';
+    return;
+  }
+
+  try {
+    const res = await fetch(`${backendUrl}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      errEl.textContent = d.detail || 'Invalid credentials';
+      return;
+    }
+    
+    userId = d.user_id;
+    username = user;
+    localStorage.setItem('TW_USER_ID', userId);
+    localStorage.setItem('TW_USERNAME', username);
+    initView();
+  } catch (err) {
+    errEl.textContent = 'Network error during login';
+  }
+}
+
+function handleLogout() {
+  localStorage.removeItem('TW_USER_ID');
+  localStorage.removeItem('TW_USERNAME');
+  userId = '';
+  username = '';
+  activeDeviceId = null;
+  initView();
+}
+
+function initView() {
+  // Clear any existing poll intervals
+  if (telemetryTimer) clearInterval(telemetryTimer);
+  if (devicesTimer) clearInterval(devicesTimer);
+  
+  if (!userId) {
+    document.getElementById('authContainer').style.display = 'flex';
+    document.getElementById('dashboardContainer').style.display = 'none';
+    document.getElementById('telemetryContainer').style.display = 'none';
+    document.getElementById('hostLabel').textContent = 'waiting for auth…';
+    document.getElementById('liveDot').classList.remove('live');
+    
+    document.getElementById('eyebrowLabel').textContent = '// Thermal Watch';
+    document.getElementById('brandTitle').textContent = 'System Vitals Monitor';
+  } else {
+    document.getElementById('authContainer').style.display = 'none';
+    if (activeDeviceId) {
+      document.getElementById('dashboardContainer').style.display = 'none';
+      document.getElementById('telemetryContainer').style.display = 'block';
+      const gpuAwakeEl = document.getElementById('gpuLastAwake');
+      if (gpuAwakeEl) gpuAwakeEl.textContent = '—';
+      refreshLatest();
+      telemetryTimer = setInterval(refreshLatest, 500);
+    } else {
+      document.getElementById('dashboardContainer').style.display = 'block';
+      document.getElementById('telemetryContainer').style.display = 'none';
+      document.getElementById('dashboardUsername').textContent = username;
+      document.getElementById('hostLabel').textContent = 'account active';
+      document.getElementById('liveDot').classList.add('live');
+      
+      document.getElementById('eyebrowLabel').textContent = '// Thermal Watch';
+      document.getElementById('brandTitle').textContent = 'My Devices';
+      
+      loadDevices();
+      devicesTimer = setInterval(loadDevices, 5000); // Poll devices list every 5s
+    }
+  }
+}
+
+// Device Dashboard Functions
+
+async function loadDevices() {
+  if (devicesLoadInProgress) return;
+  devicesLoadInProgress = true;
+  try {
+    const res = await fetch(`${backendUrl}/api/user/${userId}/devices`);
+    if (!res.ok) throw new Error('Failed to load devices');
+    const devices = await res.json();
+    
+    const listEl = document.getElementById('devicesList');
+    listEl.innerHTML = '';
+    
+    if (devices.length === 0) {
+      listEl.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 48px; border: 1px dashed var(--border); border-radius: 14px; color: var(--muted); font-size: 13px;">
+          No devices registered yet. Click "Add Device +" to register a device.
+        </div>
+      `;
+      return;
+    }
+    
+    devices.forEach(dev => {
+      // Determine if active (within last 15 seconds)
+      let active = false;
+      let lastSeenStr = 'Never';
+      if (dev.last_seen) {
+        const lastSeenDate = new Date(dev.last_seen);
+        const diffSeconds = (new Date() - lastSeenDate) / 1000;
+        active = diffSeconds < 15;
+        lastSeenStr = lastSeenDate.toLocaleTimeString();
+      }
+      
+      const card = document.createElement('div');
+      card.className = 'device-card';
+      card.innerHTML = `
+        <div class="device-header">
+          <div class="device-name">${dev.name}</div>
+          <div class="device-status" style="color: ${active ? '#5FD48A' : 'var(--muted)'}; border-color: ${active ? '#5FD48A44' : 'var(--border)'}">
+            <span class="dot" style="background: ${active ? '#5FD48A' : 'var(--muted)'}; width: 6px; height: 6px; box-shadow: ${active ? '0 0 6px #5FD48A' : 'none'}"></span>
+            ${active ? 'Online' : 'Offline'}
+          </div>
+        </div>
+        <div class="device-details">
+          <span>Hostname: <b>${dev.hostname || '—'}</b></span>
+          <span>Last Seen: <b>${lastSeenStr}</b></span>
+        </div>
+        <div class="device-actions">
+          <button class="btn-submit" style="width: 100%; font-size: 12px; padding: 10px;" onclick="openDeviceDashboard('${dev.id}', '${dev.name}')">Open Dashboard</button>
+        </div>
+      `;
+      listEl.appendChild(card);
+    });
+  } catch (err) {
+    console.error(err);
+  } finally {
+    devicesLoadInProgress = false;
+  }
+}
+
+// Modal Handlers
+function openAddDeviceModal() {
+  document.getElementById('addDeviceModal').style.display = 'flex';
+  document.getElementById('deviceNameInput').value = '';
+  document.getElementById('deviceHostInput').value = '';
+  document.getElementById('modalForm').style.display = 'block';
+  document.getElementById('modalSuccess').style.display = 'none';
+  document.getElementById('modalError').textContent = '';
+}
+
+function closeAddDeviceModal() {
+  document.getElementById('addDeviceModal').style.display = 'none';
+}
+
+async function submitAddDevice() {
+  const dName = document.getElementById('deviceNameInput').value.trim();
+  const dHost = document.getElementById('deviceHostInput').value.trim();
+  const errEl = document.getElementById('modalError');
+  errEl.textContent = '';
+  
+  if (!dName) {
+    errEl.textContent = 'Device name is required';
+    return;
+  }
+  
+  try {
+    const res = await fetch(`${backendUrl}/api/device/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, device_name: dName, hostname: dHost || null })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      errEl.textContent = d.detail || 'Failed to register device';
+      return;
+    }
+    
+    document.getElementById('generatedSecretVal').textContent = d.device_secret;
+    document.getElementById('modalForm').style.display = 'none';
+    document.getElementById('modalSuccess').style.display = 'block';
+  } catch (err) {
+    errEl.textContent = 'Network error registering device';
+  }
+}
+
+function copyDeviceSecret() {
+  const secretText = document.getElementById('generatedSecretVal').textContent;
+  navigator.clipboard.writeText(secretText).then(() => {
+    const copyBtn = document.querySelector('.btn-copy');
+    copyBtn.textContent = 'Copied!';
+    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+  });
+}
+
+function finishAddDevice() {
+  closeAddDeviceModal();
+  loadDevices();
+}
+
+// Telemetry Handlers
+
+function openDeviceDashboard(devId, devName) {
+  activeDeviceId = devId;
+  document.getElementById('eyebrowLabel').textContent = `// Device: ${devName}`;
+  document.getElementById('brandTitle').textContent = 'Live Telemetry';
+  initView();
+}
+
+function goBackToDevices() {
+  activeDeviceId = null;
+  initView();
+}
+
+async function refreshLatest(){
+  if (!activeDeviceId || refreshInProgress) return;
+  refreshInProgress = true;
+  try{
+    const res = await fetch(`${backendUrl}/api/device/${activeDeviceId}/latest`);
+    if (!res.ok) throw new Error('no data');
+    const d = await res.json();
+    document.getElementById('liveDot').classList.add('live');
+    document.getElementById('hostLabel').textContent = 'online';
+    
+    // CPU
+    const cpuTemp = typeof d.cpu_temp === 'number' ? d.cpu_temp : 0;
+    const cpuUtil = typeof d.cpu_util === 'number' ? d.cpu_util : 0;
+    setGauge('cpuGaugeArc', 'cpuGaugeTemp', cpuTemp, false);
+    
+    document.getElementById('cpuUtilVal').textContent = typeof d.cpu_util === 'number' ? `${d.cpu_util.toFixed(0)}%` : '—';
+    document.getElementById('cpuPowerVal').textContent = typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : '—';
+    document.getElementById('cpuClockVal').textContent = typeof d.cpu_clock === 'number' ? `${d.cpu_clock.toFixed(0)} MHz` : '—';
+    
+    const cpuFanSpeed = getFanSpeed(d.power_mode, cpuTemp, false);
+    document.getElementById('cpuFanVal').textContent = cpuFanSpeed > 0 ? `${cpuFanSpeed} RPM` : '0 RPM (OFF)';
+
+    // GPU
+    const gpuTemp = typeof d.gpu_temp === 'number' ? d.gpu_temp : 0;
+    const gpuUtil = typeof d.gpu_util === 'number' ? d.gpu_util : 0;
+    setGauge('gpuGaugeArc', 'gpuGaugeTemp', gpuTemp, true);
+    
+    document.getElementById('gpuUtilVal').textContent = typeof d.gpu_util === 'number' ? `${d.gpu_util.toFixed(0)}%` : '—';
+    document.getElementById('gpuPowerVal').textContent = typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : '—';
+    
+    if (!d.gpu_name) {
+      document.getElementById('gpuFanVal').textContent = '—';
+    } else if (d.gpu_active === false) {
+      document.getElementById('gpuFanVal').textContent = '0 RPM (Sleeping)';
+    } else {
+      const gpuFanSpeed = getFanSpeed(d.power_mode, gpuTemp, true);
+      document.getElementById('gpuFanVal').textContent = gpuFanSpeed > 0 ? `${gpuFanSpeed} RPM` : '0 RPM (OFF)';
+    }
+    
+    if (d.gpu_name && d.gpu_active !== false) {
+      const gpuDate = new Date(d.ts * 1000);
+      let gHours = gpuDate.getHours();
+      const gAmpm = gHours >= 12 ? 'PM' : 'AM';
+      gHours = gHours % 12;
+      gHours = gHours ? gHours : 12;
+      const gMins = String(gpuDate.getMinutes()).padStart(2, '0');
+      const gSecs = String(gpuDate.getSeconds()).padStart(2, '0');
+      document.getElementById('gpuLastAwake').textContent = `${gHours}:${gMins}:${gSecs} ${gAmpm}`;
+    }
+    
+    if (typeof d.gpu_mem_used === 'number' && typeof d.gpu_mem_total === 'number' && d.gpu_mem_total > 0) {
+      const usedGB = d.gpu_mem_used / 1024;
+      const totalGB = d.gpu_mem_total / 1024;
+      const pct = (d.gpu_mem_used / d.gpu_mem_total) * 100;
+      document.getElementById('gpuVramVal').textContent = `${usedGB.toFixed(2)} GB / ${totalGB.toFixed(1)} GB (${pct.toFixed(0)}%)`;
+    } else {
+      document.getElementById('gpuVramVal').textContent = '—';
+    }
+
+    const gpuChip = document.getElementById('gpuChip');
+    if (gpuChip) {
+      if (d.gpu_name) {
+        if (d.gpu_active === false) {
+          gpuChip.textContent = `${d.gpu_name} (Sleeping)`;
+          gpuChip.style.borderColor = '#7C8798';
+          gpuChip.style.color = '#7C8798';
+          gpuChip.style.boxShadow = 'none';
+        } else {
+          gpuChip.textContent = d.gpu_name;
+          gpuChip.style.borderColor = COOL;
+          gpuChip.style.color = COOL;
+          gpuChip.style.boxShadow = `0 0 16px ${COOL}33`;
+        }
+      } else {
+        gpuChip.textContent = 'no GPU detected';
+        gpuChip.style.borderColor = '#7C8798';
+        gpuChip.style.color = '#7C8798';
+        gpuChip.style.boxShadow = 'none';
+      }
+    }
+
+    // Power Analytics
+    const cpuP = typeof d.cpu_power === 'number' ? d.cpu_power : 0;
+    const gpuP = typeof d.gpu_power === 'number' ? d.gpu_power : 0;
+    const batP = typeof d.battery_power === 'number' ? d.battery_power : 0;
+    
+    let totalPower = 0;
+    let powerSourceStr = 'Unknown';
+    let batteryStatusStr = '—';
+    
+    if (d.ac_plugged === true) {
+      powerSourceStr = 'AC Power';
+      totalPower = cpuP + gpuP;
+      if (typeof d.battery_level === 'number') {
+        if (d.battery_level >= 99) {
+          batteryStatusStr = `Fully Charged (${d.battery_level.toFixed(0)}%)`;
+        } else if (batP > 0) {
+          batteryStatusStr = `Charging (${d.battery_level.toFixed(0)}%)`;
+        } else {
+          batteryStatusStr = `Plugged In (${d.battery_level.toFixed(0)}%)`;
+        }
+      } else {
+        batteryStatusStr = 'Plugged In';
+      }
+    } else if (d.ac_plugged === false) {
+      powerSourceStr = 'Battery';
+      totalPower = batP > 0 ? batP : (cpuP + gpuP);
+      if (typeof d.battery_level === 'number') {
+        batteryStatusStr = `Discharging (${d.battery_level.toFixed(0)}%)`;
+      } else {
+        batteryStatusStr = 'Discharging';
+      }
+    }
+    
+    setPowerGauge('powerGaugeArc', 'powerGaugeVal', totalPower);
+    
+    document.getElementById('cpuPowerVal2').textContent = typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : '—';
+    document.getElementById('gpuPowerVal2').textContent = typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : '—';
+    
+    if (typeof d.battery_power === 'number') {
+      const prefix = d.ac_plugged === true ? '+' : '-';
+      document.getElementById('batteryPowerVal').textContent = `${prefix}${d.battery_power.toFixed(1)} W`;
+    } else {
+      document.getElementById('batteryPowerVal').textContent = '—';
+    }
+    
+    document.getElementById('batteryStatusVal').textContent = batteryStatusStr;
+    
+    const pChip = document.getElementById('powerSourceChip');
+    if (pChip) {
+      pChip.textContent = powerSourceStr;
+      const c = d.ac_plugged === true ? COOL : WARM;
+      pChip.style.borderColor = c;
+      pChip.style.color = c;
+      pChip.style.boxShadow = `0 0 16px ${c}33`;
+    }
+
+    // Info/mode
+    setModeChip(d.power_mode);
+    const lastUpdatedDate = new Date(d.ts * 1000);
+    let hours = lastUpdatedDate.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const mins = String(lastUpdatedDate.getMinutes()).padStart(2, '0');
+    const secs = String(lastUpdatedDate.getSeconds()).padStart(2, '0');
+    document.getElementById('lastUpdated').textContent = `${hours}:${mins}:${secs} ${ampm}`;
+  } catch(e) {
+    document.getElementById('liveDot').classList.remove('live');
+    document.getElementById('hostLabel').textContent = 'waiting for data…';
+  } finally {
+    refreshInProgress = false;
+  }
+}
+
+// Utility to get error CSS color variable
+function varName(cssVar) {
+  return getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
+}
+
+// Initial View Setup
+initView();
+</script>
+</body>
+</html>
