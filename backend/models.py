@@ -1,30 +1,32 @@
 from pydantic import BaseModel
-from typing import Optional
+
 
 class UserAuth(BaseModel):
     username: str
     password: str
 
+
 class DeviceRegister(BaseModel):
     user_id: str
     device_name: str
-    hostname: Optional[str] = None
+    hostname: str | None = None
+
 
 class TelemetryIngest(BaseModel):
     device_secret: str
-    cpu_temp: Optional[float] = None
-    cpu_power: Optional[float] = None
-    cpu_clock: Optional[float] = None
-    cpu_util: Optional[float] = None
-    gpu_name: Optional[str] = None
-    gpu_temp: Optional[float] = None
-    gpu_power: Optional[float] = None
-    gpu_util: Optional[float] = None
-    gpu_mem_used: Optional[float] = None
-    gpu_mem_total: Optional[float] = None
-    gpu_active: Optional[bool] = None
-    ac_plugged: Optional[bool] = None
-    battery_power: Optional[float] = None
-    battery_voltage: Optional[float] = None
-    battery_level: Optional[float] = None
+    cpu_temp: float | None = None
+    cpu_power: float | None = None
+    cpu_clock: float | None = None
+    cpu_util: float | None = None
+    gpu_name: str | None = None
+    gpu_temp: float | None = None
+    gpu_power: float | None = None
+    gpu_util: float | None = None
+    gpu_mem_used: float | None = None
+    gpu_mem_total: float | None = None
+    gpu_active: bool | None = None
+    ac_plugged: bool | None = None
+    battery_power: float | None = None
+    battery_voltage: float | None = None
+    battery_level: float | None = None
     power_mode: str

@@ -1,83 +1,145 @@
-# Production Deployment Guide
+# Production deployment checklist
 
-This document describes how to deploy the SysVitals dashboard frontend and backend server components to production.
+## Native Ubuntu on WSL (no Docker)
 
----
+This project can run directly in an Ubuntu WSL distribution. Cloudflare Tunnel
+handles the public TLS connection, Caddy serves the frontend over loopback HTTP,
+and a systemd-managed Uvicorn process runs the API on
+`127.0.0.1:8000`. The supplied native configuration is for
+`sysvitals.mukhildharan.dev`.
 
-## 1. Frontend (Cloudflare Pages)
+Cloudflare Tunnel creates an outbound connection from WSL to Cloudflare. The
+app therefore needs no public IP, router port-forwarding, Windows firewall
+rule, or WSL port-proxy configuration.
 
-The frontend is a completely static, serverless website. It can be hosted on any static hosting provider.
+### 1. Install and enable Ubuntu systemd
 
-### Deployment Instructions:
-1. Go to your **[Cloudflare Dashboard](https://dash.cloudflare.com/)** and navigate to **Workers & Pages**.
-2. Click **Create Application** &rarr; **Pages** &rarr; **Upload assets** or connect your GitHub repository.
-3. If connecting a repository, configure the build settings as:
-   * **Framework preset**: `None`
-   * **Build command**: *Leave empty*
-   * **Build output directory**: `frontend/`
-4. Click **Deploy**. Your dashboard will be live at `https://<your-project>.pages.dev`.
+Run the following from an elevated PowerShell window. The first command
+installs Ubuntu if it is not already installed; launch Ubuntu once afterwards
+to create its Linux user account.
 
----
-
-## 2. Backend (Render / Railway / Fly.io)
-
-The backend is a standard FastAPI web application. It connects to your remote Supabase database and serves the client API routes.
-
-### Deployment Instructions (Render):
-1. Create a new **Web Service** on [Render](https://render.com).
-2. Connect your GitHub repository.
-3. Configure the settings:
-   * **Runtime**: `Python`
-   * **Build Command**: `pip install -r backend/requirements.txt`
-   * **Start Command**: `python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-4. In the **Environment** tab, add the following environment variables:
-   * `SUPABASE_URL`: Your Supabase project URL (e.g. `https://mffdohfthbeiuwoodqwo.supabase.co`)
-   * `SUPABASE_KEY`: Your Supabase `service_role` secret key.
-
----
-
-## 3. Connecting Frontend and Backend
-
-### Central Config
-You can pre-configure your dashboard frontend to default to your deployed backend URL:
-1. Open **[frontend/js/config.js](file:///c:/Projects/SysVitals/frontend/js/config.js)**.
-2. Edit `API_BASE_URL` to point to your live backend domain:
-   ```javascript
-   const API_BASE_URL = 'https://sysvitals-backend.onrender.com';
-   ```
-
-### Runtime Target Switcher
-Any user can switch their active API endpoint dynamically on the dashboard website by:
-1. Typing their backend URL into the **API Server URL** box in the top-right corner.
-2. Appending `?backend=<url>` to the browser address bar (e.g. `https://sysvitals.pages.dev/?backend=https://sysvitals-backend.onrender.com`).
-
----
-
-## 4. HTTPS and Mixed Content Block
-When hosting your frontend on a secure site (`https://`):
-* Modern browsers **block** requests to insecure `http://` API endpoints.
-* Therefore, your hosted backend **must have SSL enabled (https://)**. Cloudflare Pages and Render automatically provision free SSL certificates for you out of the box, ensuring seamless HTTPS communication.
-
----
-
-## 5. Automatic Telemetry Cleanup (10-Minute Retention)
-
-To prevent your database storage from exceeding limits, telemetry records can be automatically cleaned up after 10 minutes.
-
-### Setup Instructions (Supabase pg_cron):
-1. Go to your **Supabase Dashboard** &rarr; **SQL Editor**.
-2. Run the migration script located in **[backend/supabase_cleanup_migration.sql](file:///c:/Projects/SysVitals/backend/supabase_cleanup_migration.sql)**.
-3. This creates the cleanup function `delete_old_telemetry()`, sets up an index on `ts`, and registers the recurring job `telemetry-retention-cleanup` via `pg_cron` to run every minute.
-
-### Checking Cron Job Status:
-You can check if the cron job is successfully registered and running by executing these queries in the SQL Editor:
-
-```sql
--- View all registered cron jobs
-select * from cron.job;
-
--- Check execution logs and success status
-select * from cron.job_run_details
-order by start_time desc
-limit 20;
+```powershell
+wsl --install -d Ubuntu
 ```
+
+Inside Ubuntu, enable systemd:
+
+```bash
+sudo tee /etc/wsl.conf >/dev/null <<'EOF'
+[boot]
+systemd=true
+EOF
+```
+
+Then return to PowerShell and restart WSL:
+
+```powershell
+wsl --shutdown
+wsl -d Ubuntu
+```
+
+### 2. Deploy the application in Ubuntu
+
+Clone the repository into Ubuntu's Linux filesystem (for example,
+`~/SysVitals`), rather than running it directly from `/mnt/c`. From the
+checkout, run:
+
+```bash
+chmod +x deploy/wsl-native-deploy.sh
+./deploy/wsl-native-deploy.sh
+systemctl status sysvitals-backend caddy --no-pager
+curl -fsS http://127.0.0.1:8000/health
+```
+
+The API database is kept at `/var/lib/sysvitals/sysvitals.db`. The service is
+not publicly exposed. Caddy listens only on `127.0.0.1:8080` for the tunnel.
+
+### 3. Create and connect a Cloudflare Tunnel
+
+In the Cloudflare Zero Trust dashboard, open **Networks > Tunnels**, create a
+remotely-managed tunnel named `sysvitals-wsl`, then add a public hostname:
+
+- **Hostname:** `sysvitals.mukhildharan.dev`
+- **Service type:** `HTTP`
+- **URL:** `http://127.0.0.1:8080`
+
+Copy the connector token shown by Cloudflare. Treat it like a password: do not
+put it in `.env`, source code, or git. Inside Ubuntu, install `cloudflared`
+from Cloudflare's package repository and register it as a system service:
+
+```bash
+sudo mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt-get update && sudo apt-get install -y cloudflared
+sudo cloudflared service install <PASTE_THE_TUNNEL_TOKEN_HERE>
+sudo systemctl status cloudflared --no-pager
+```
+
+The Cloudflare dashboard creates the proxied DNS record for this hostname. Do
+not create a public A/AAAA record that points at the home connection. HTTPS is
+terminated by Cloudflare, while Caddy remains plain HTTP on loopback.
+
+### 4. Verify externally
+
+Use mobile data or another network, then run:
+
+```bash
+curl -fsS https://sysvitals.mukhildharan.dev/health
+```
+
+It must return `{"status":"ok"}`. Check connector and application logs with:
+
+```bash
+journalctl -u cloudflared -u caddy -u sysvitals-backend -n 100 --no-pager
+```
+
+To update the native deployment later, pull the new code in the Ubuntu checkout
+and rerun `./deploy/wsl-native-deploy.sh`.
+
+## Docker deployment
+
+## Before deployment
+
+1. Install Docker Engine and the Docker Compose plugin.
+2. Point the domain's A/AAAA records to the server.
+3. Allow inbound TCP 80/443 and UDP 443.
+4. Copy `.env.example` to the root `.env`.
+5. Set `DOMAIN` and `TW_SERVER_URL` to the public origin, then keep `.env` out of version control.
+6. If Cloudflare proxying is enabled, select **Full (strict)** SSL/TLS mode.
+
+## Start and verify
+
+```bash
+docker compose config
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100 caddy backend
+curl https://status.example.com/health
+```
+
+Expected health response:
+
+```json
+{"status":"ok"}
+```
+
+Only Caddy should publish host ports. `docker compose ps` should show no published port for `backend`.
+
+## Routing
+
+- `/`, HTML, CSS, JavaScript, and assets are served from `frontend/`.
+- `/api/*` is passed to `backend:8000` without rewriting the path.
+- `/health` is passed to the backend.
+
+The frontend uses same-origin API paths. The monitor should set `TW_SERVER_URL` to the public origin, without a trailing `/api` segment.
+
+## Troubleshooting
+
+- Certificate issuance failures: verify public DNS, ports 80/443, and Caddy logs.
+- Cloudflare redirect loops: verify the zone is not using Flexible SSL.
+- Backend unhealthy: inspect `docker compose logs backend` and volume permissions.
+- Monitor 401 response: replace `TW_DEVICE_SECRET` with the value generated for that device.
+- Monitor connection failure: verify the public `/health` endpoint from the monitored computer.
+
+Backup and update procedures are in the repository [README](../README.md).

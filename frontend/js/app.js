@@ -3,40 +3,11 @@ const WARM = getComputedStyle(document.documentElement).getPropertyValue('--warm
 const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot').trim();
 const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
 
-function normalizeBackendUrl(value) {
-  let url = String(value || '').trim();
-  if (!url) return '';
-  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-  return url.replace(/\/+$/, '');
-}
-
-// Parse an explicit backend URL query parameter (useful for local development).
-const urlParams = new URLSearchParams(window.location.search);
-const queryBackend = urlParams.get('backend');
-if (queryBackend) {
-  const formattedUrl = normalizeBackendUrl(queryBackend);
-  if (formattedUrl) {
-    localStorage.setItem('TW_BACKEND_URL', formattedUrl);
-  }
-}
-
-// A stale local HTTP URL cannot work from an HTTPS Cloudflare Pages site. In
-// production, safely fall back to the configured API instead of failing with a
-// browser mixed-content "Network error".
-const storedBackendUrl = normalizeBackendUrl(localStorage.getItem('TW_BACKEND_URL'));
-const isSecurePage = window.location.protocol === 'https:';
-const safeStoredBackendUrl = isSecurePage && storedBackendUrl.startsWith('http://')
-  ? ''
-  : storedBackendUrl;
-let backendUrl = safeStoredBackendUrl || normalizeBackendUrl(API_BASE_URL);
-if (!safeStoredBackendUrl && storedBackendUrl) localStorage.removeItem('TW_BACKEND_URL');
-
 async function apiFetch(path, options = {}) {
   const controller = new AbortController();
-  // Render's free service can take about a minute to wake after being idle.
   const timeoutId = setTimeout(() => controller.abort(), 90000);
   try {
-    return await fetch(`${backendUrl}${path}`, { ...options, signal: controller.signal });
+    return await fetch(path, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -52,23 +23,7 @@ function networkErrorMessage(error, action) {
   if (error && error.name === 'AbortError') {
     return `API timed out during ${action}. Please try again.`;
   }
-  return `Cannot reach the SysVitals API (${backendUrl}). Please try again shortly.`;
-}
-
-const apiUrlInput = document.getElementById('apiUrlInput');
-if (apiUrlInput) {
-  apiUrlInput.value = backendUrl;
-  apiUrlInput.addEventListener('change', (e) => {
-    const url = normalizeBackendUrl(e.target.value);
-    if (isSecurePage && url.startsWith('http://')) {
-      e.target.value = backendUrl;
-      return;
-    }
-    apiUrlInput.value = url;
-    localStorage.setItem('TW_BACKEND_URL', url);
-    backendUrl = url;
-    initView();
-  });
+  return `Cannot reach the SysVitals API during ${action}. Please try again shortly.`;
 }
 
 // Session State
@@ -81,7 +36,6 @@ let refreshInProgress = false;
 let devicesLoadInProgress = false;
 
 // Thresholds tuned for typical components
-const T_MIN = 30, T_MAX = 100;
 const CPU_THRESH = [ [70, COOL], [80, WARM], [90, HOT], [999, CRIT] ];
 const GPU_THRESH = [ [60, COOL], [70, WARM], [80, HOT], [999, CRIT] ];
 const P_THRESH = [ [20, COOL], [40, WARM], [60, HOT], [999, CRIT] ];
@@ -131,24 +85,15 @@ function colorForCPUTemp(t){
   return CRIT;
 }
 
-// Ensure function is declared globally
-window.colorForCPUTemp = colorForCPUTemp;
-
 function colorForGPUTemp(t){
   for (const [max, c] of GPU_THRESH) if (t <= max) return c;
   return CRIT;
 }
 
-// Ensure function is declared globally
-window.colorForGPUTemp = colorForGPUTemp;
-
 function colorForPower(p){
   for (const [max, c] of P_THRESH) if (p <= max) return c;
   return CRIT;
 }
-
-// Ensure function is declared globally
-window.colorForPower = colorForPower;
 
 function setGauge(arcId, tempId, temp, isGpu = false){
   const circumference = 2 * Math.PI * 100; // ~628
@@ -175,9 +120,6 @@ function setGauge(arcId, tempId, temp, isGpu = false){
   }
 }
 
-// Ensure function is declared globally
-window.setGauge = setGauge;
-
 // Power gauge setup
 function setPowerGauge(arcId, valId, power){
   const circumference = 2 * Math.PI * 100; // ~628
@@ -203,9 +145,6 @@ function setPowerGauge(arcId, valId, power){
   }
 }
 
-// Ensure function is declared globally
-window.setPowerGauge = setPowerGauge;
-
 function setModeChip(mode){
   const chip = document.getElementById('modeChip');
   if (!chip) return;
@@ -226,9 +165,6 @@ function setModeChip(mode){
   chip.style.boxShadow = `0 0 16px ${c}33`;
 }
 
-// Ensure function is declared globally
-window.setModeChip = setModeChip;
-
 // Navigation & Auth Flow
 function toggleAuth(showLogin) {
   const loginCard = document.getElementById('loginCard');
@@ -240,9 +176,6 @@ function toggleAuth(showLogin) {
   if (loginErr) loginErr.textContent = '';
   if (regErr) regErr.textContent = '';
 }
-
-// Ensure function is declared globally
-window.toggleAuth = toggleAuth;
 
 async function handleRegister() {
   const user = document.getElementById('regUser').value.trim();
@@ -285,9 +218,6 @@ async function handleRegister() {
   }
 }
 
-// Ensure function is declared globally
-window.handleRegister = handleRegister;
-
 async function handleLogin() {
   const user = document.getElementById('loginUser').value.trim();
   const pass = document.getElementById('loginPass').value;
@@ -324,9 +254,6 @@ async function handleLogin() {
   }
 }
 
-// Ensure function is declared globally
-window.handleLogin = handleLogin;
-
 function handleLogout() {
   localStorage.removeItem('TW_USER_ID');
   localStorage.removeItem('TW_USERNAME');
@@ -335,9 +262,6 @@ function handleLogout() {
   activeDeviceId = null;
   window.location.href = 'login.html';
 }
-
-// Ensure function is declared globally
-window.handleLogout = handleLogout;
 
 function initView() {
   const isLoginPage = !!document.getElementById('authContainer');
@@ -381,15 +305,12 @@ function initView() {
   }
 }
 
-// Ensure function is declared globally
-window.initView = initView;
-
 // Device Dashboard Functions
 async function loadDevices() {
   if (devicesLoadInProgress) return;
   devicesLoadInProgress = true;
   try {
-    const res = await fetch(`${backendUrl}/api/user/${userId}/devices`);
+    const res = await apiFetch(`/api/user/${userId}/devices`);
     if (!res.ok) throw new Error('Failed to load devices');
     const devices = await res.json();
     
@@ -443,9 +364,6 @@ async function loadDevices() {
   }
 }
 
-// Ensure function is declared globally
-window.loadDevices = loadDevices;
-
 // Modal Handlers
 function openAddDeviceModal() {
   const modal = document.getElementById('addDeviceModal');
@@ -462,16 +380,10 @@ function openAddDeviceModal() {
   if (modalErr) modalErr.textContent = '';
 }
 
-// Ensure function is declared globally
-window.openAddDeviceModal = openAddDeviceModal;
-
 function closeAddDeviceModal() {
   const modal = document.getElementById('addDeviceModal');
   if (modal) modal.style.display = 'none';
 }
-
-// Ensure function is declared globally
-window.closeAddDeviceModal = closeAddDeviceModal;
 
 async function submitAddDevice() {
   const dName = document.getElementById('deviceNameInput').value.trim();
@@ -485,7 +397,7 @@ async function submitAddDevice() {
   }
   
   try {
-    const res = await fetch(`${backendUrl}/api/device/register`, {
+    const res = await apiFetch('/api/device/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, device_name: dName, hostname: dHost || null })
@@ -507,9 +419,6 @@ async function submitAddDevice() {
   }
 }
 
-// Ensure function is declared globally
-window.submitAddDevice = submitAddDevice;
-
 function copyDeviceSecret() {
   const secretText = document.getElementById('generatedSecretVal').textContent;
   navigator.clipboard.writeText(secretText).then(() => {
@@ -521,16 +430,10 @@ function copyDeviceSecret() {
   });
 }
 
-// Ensure function is declared globally
-window.copyDeviceSecret = copyDeviceSecret;
-
 function finishAddDevice() {
   closeAddDeviceModal();
   loadDevices();
 }
-
-// Ensure function is declared globally
-window.finishAddDevice = finishAddDevice;
 
 // Telemetry Handlers
 function openDeviceDashboard(devId, devName) {
@@ -542,22 +445,16 @@ function openDeviceDashboard(devId, devName) {
   initView();
 }
 
-// Ensure function is declared globally
-window.openDeviceDashboard = openDeviceDashboard;
-
 function goBackToDevices() {
   activeDeviceId = null;
   initView();
 }
 
-// Ensure function is declared globally
-window.goBackToDevices = goBackToDevices;
-
 async function refreshLatest(){
   if (!activeDeviceId || refreshInProgress) return;
   refreshInProgress = true;
   try{
-    const res = await fetch(`${backendUrl}/api/device/${activeDeviceId}/latest`);
+    const res = await apiFetch(`/api/device/${activeDeviceId}/latest`);
     if (!res.ok) throw new Error('no data');
     const d = await res.json();
     const liveDot = document.getElementById('liveDot');
@@ -567,7 +464,6 @@ async function refreshLatest(){
     
     // CPU
     const cpuTemp = typeof d.cpu_temp === 'number' ? d.cpu_temp : 0;
-    const cpuUtil = typeof d.cpu_util === 'number' ? d.cpu_util : 0;
     setGauge('cpuGaugeArc', 'cpuGaugeTemp', cpuTemp, false);
     
     const cpuUtilEl = document.getElementById('cpuUtilVal');
@@ -583,7 +479,6 @@ async function refreshLatest(){
 
     // GPU
     const gpuTemp = typeof d.gpu_temp === 'number' ? d.gpu_temp : 0;
-    const gpuUtil = typeof d.gpu_util === 'number' ? d.gpu_util : 0;
     setGauge('gpuGaugeArc', 'gpuGaugeTemp', gpuTemp, true);
     
     const gpuUtilEl = document.getElementById('gpuUtilVal');
@@ -730,16 +625,10 @@ async function refreshLatest(){
   }
 }
 
-// Ensure function is declared globally
-window.refreshLatest = refreshLatest;
-
 // Utility to get error CSS color variable
 function varName(cssVar) {
   return getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
 }
-
-// Ensure function is declared globally
-window.varName = varName;
 
 // Initial View Setup
 initView();

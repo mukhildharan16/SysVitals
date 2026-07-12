@@ -42,29 +42,6 @@ header{
 }
 .dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
 .dot.live{background:#5FD48A;box-shadow:0 0 8px rgba(95,212,138,0.7);}
-.api-input-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 12px;
-}
-.api-input {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 10px;
-  color: var(--text);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  width: 200px;
-  outline: none;
-  transition: border-color .3s ease, box-shadow .3s ease;
-}
-.api-input:focus {
-  border-color: var(--cool);
-  box-shadow: 0 0 8px rgba(95, 212, 138, 0.2);
-}
-
 /* Auth Screen Styling */
 .auth-wrap {
   display: flex;

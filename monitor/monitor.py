@@ -1,15 +1,13 @@
 import os
+import subprocess
 import sys
 import time
-import subprocess
 from pathlib import Path
-from typing import Optional
 
-# 1. Zero-dependency .env loader
-dotenv_path = Path(__file__).parent / ".env"
-if not dotenv_path.exists():
-    dotenv_path = Path(__file__).parent.parent / ".env"
+import requests
 
+# Load monitor-specific configuration without overriding process environment.
+dotenv_path = Path(__file__).parent.parent / ".env"
 if dotenv_path.exists():
     with open(dotenv_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -20,27 +18,25 @@ if dotenv_path.exists():
                 key, val = line.split("=", 1)
                 key = key.strip()
                 val = val.strip().strip('"').strip("'")
-                os.environ[key] = val
+                os.environ.setdefault(key, val)
 
-# 2. Third-party HTTP requests import
-try:
-    import requests
-    # Force urllib3 to only use IPv4 to prevent 20-second connection timeouts on systems with broken IPv6 routes
-    import socket
-    import urllib3.util.connection
-    urllib3.util.connection.allowed_gai_family = lambda: socket.AF_INET
-except ImportError:
-    print("Error: 'requests' package not installed. Run 'pip install -r requirements.txt' first.", file=sys.stderr)
-    sys.exit(1)
 
-# Env-based config
-SERVER_URL = os.environ.get("TW_SERVER_URL", "")
+def normalize_server_url(value: str) -> str:
+    """Return a usable HTTP(S) base URL from a hostname or URL."""
+    url = value.strip()
+    if url and not url.lower().startswith(("http://", "https://")):
+        url = f"https://{url}"
+    return url.rstrip("/")
+
+
+SERVER_URL = normalize_server_url(os.environ.get("TW_SERVER_URL", ""))
 DEVICE_SECRET = os.environ.get("TW_DEVICE_SECRET", "")
 INTERVAL = float(os.environ.get("TW_INTERVAL_SECONDS", "10.0"))
 
 
 IS_WINDOWS = sys.platform == "win32"
 _computer = None
+
 
 def init_windows_sensors():
     global _computer
@@ -62,7 +58,6 @@ def init_windows_sensors():
         dll_path = r"C:\Softwares\LenovoLegionToolkit\LibreHardwareMonitorLib.dll"
         if os.path.exists(dll_path):
             clr.AddReference(dll_path)
-            import LibreHardwareMonitor
             from LibreHardwareMonitor.Hardware import Computer
             _computer = Computer()
             _computer.IsCpuEnabled = True
@@ -291,6 +286,7 @@ def get_vitals() -> dict:
     # CPU Temp
     try:
         import psutil
+
         temps = psutil.sensors_temperatures()
         for key in ("k10temp", "coretemp", "cpu_thermal", "zenpower"):
             if key in temps and temps[key]:
@@ -323,6 +319,7 @@ def get_vitals() -> dict:
     # CPU Util
     try:
         import psutil
+
         vitals["cpu_util"] = float(psutil.cpu_percent())
     except Exception:
         pass
@@ -330,6 +327,7 @@ def get_vitals() -> dict:
     # CPU Clock
     try:
         import psutil
+
         vitals["cpu_clock"] = float(psutil.cpu_freq().current)
     except Exception:
         pass
@@ -337,9 +335,7 @@ def get_vitals() -> dict:
     # Fallbacks for Linux
     vitals["cpu_power"] = 0.0
 
-    if not IS_WINDOWS:
-        linux_bat = get_linux_battery_power()
-        vitals.update(linux_bat)
+    vitals.update(get_linux_battery_power())
 
     return vitals
 
@@ -525,27 +521,8 @@ def send_reading(vitals: dict, power_mode: str):
         "power_mode": power_mode
     }
     
-    errors = []
-    # 1) Try sending to configured SERVER_URL
-    if SERVER_URL:
-        try:
-            resp = requests.post(f"{SERVER_URL}/api/ingest", json=payload, timeout=10)
-            resp.raise_for_status()
-            return
-        except Exception as e:
-            errors.append(f"Configured server ({SERVER_URL}): {e}")
-
-    # 2) Fallback to local server if SERVER_URL is not local
-    local_url = "http://127.0.0.1:8000"
-    if SERVER_URL != local_url:
-        try:
-            resp = requests.post(f"{local_url}/api/ingest", json=payload, timeout=10)
-            resp.raise_for_status()
-            return
-        except Exception as e:
-            errors.append(f"Local fallback ({local_url}): {e}")
-
-    raise Exception(" -> ".join(errors))
+    resp = requests.post(f"{SERVER_URL}/api/ingest", json=payload, timeout=10)
+    resp.raise_for_status()
 
 
 def main():
@@ -556,7 +533,7 @@ def main():
     init_windows_sensors()
     gpu_monitor = GpuMonitor()
 
-    print(f"Thermal Watch client started. Reporting to {SERVER_URL} every {INTERVAL}s using device secret.")
+    print(f"SysVitals monitor started. Reporting to {SERVER_URL} every {INTERVAL}s.")
     try:
         while True:
             vitals = get_vitals()

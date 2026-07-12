@@ -11,3 +11,11 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# Runtime data
+data/
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+logs/
