@@ -273,6 +273,22 @@ On Windows, run the terminal as Administrator if the hardware-sensor library
 cannot access CPU or GPU readings. Open the dashboard and select the device to
 confirm that telemetry is arriving.
 
+## 8. JSON feed and desktop GUI
+
+When viewing a device's telemetry, use **Copy JSON API URL** to copy its raw
+readings feed. The endpoint returns the latest 100 readings by default:
+
+```text
+https://status.example.com/api/device/DEVICE_ID/telemetry.json
+```
+
+Use `?limit=500` to request more readings (up to 1000). The feed includes all
+fields received from the monitor, including supplemental system details.
+
+The standalone desktop GUI is in [`desktop/README.md`](desktop/README.md). It
+uses the same dashboard HTML, CSS, and JavaScript and fetches the public
+SysVitals API through its Rust receiver.
+
 ## Everyday operations
 
 ### Check status

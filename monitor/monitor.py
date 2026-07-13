@@ -1,4 +1,5 @@
 import os
+import getpass
 import subprocess
 import sys
 import time
@@ -340,6 +341,39 @@ def get_vitals() -> dict:
     return vitals
 
 
+def get_system_details() -> dict:
+    """Return supplemental system information independent of hardware sensors."""
+    details = {
+        "memory_used_mb": None,
+        "applications_open": None,
+        "uptime_seconds": None,
+        "current_user": None,
+    }
+    try:
+        import psutil
+
+        details["memory_used_mb"] = float(psutil.virtual_memory().used) / (1024 * 1024)
+        details["uptime_seconds"] = max(0.0, time.time() - psutil.boot_time())
+
+        applications = set()
+        for process in psutil.process_iter(["name"]):
+            try:
+                name = process.info["name"]
+                if name:
+                    applications.add(name)
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+        details["applications_open"] = sorted(applications, key=str.casefold)
+    except Exception:
+        pass
+
+    try:
+        details["current_user"] = getpass.getuser()
+    except Exception:
+        pass
+    return details
+
+
 class GpuMonitor:
     def __init__(self):
         self.initialized = False
@@ -518,6 +552,10 @@ def send_reading(vitals: dict, power_mode: str):
         "battery_power": vitals.get("battery_power"),
         "battery_voltage": vitals.get("battery_voltage"),
         "battery_level": vitals.get("battery_level"),
+        "memory_used_mb": vitals.get("memory_used_mb"),
+        "applications_open": vitals.get("applications_open"),
+        "uptime_seconds": vitals.get("uptime_seconds"),
+        "current_user": vitals.get("current_user"),
         "power_mode": power_mode
     }
     
@@ -537,6 +575,7 @@ def main():
     try:
         while True:
             vitals = get_vitals()
+            vitals.update(get_system_details())
             gpu_vitals = gpu_monitor.get_gpu_vitals()
             vitals.update(gpu_vitals)
             

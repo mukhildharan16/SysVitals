@@ -2,11 +2,48 @@ const COOL = getComputedStyle(document.documentElement).getPropertyValue('--cool
 const WARM = getComputedStyle(document.documentElement).getPropertyValue('--warm').trim();
 const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot').trim();
 const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
+const isDesktopApp = Boolean(window.__TAURI__?.core?.invoke);
+let apiServerUrl = localStorage.getItem('SV_API_SERVER_URL') || '';
+
+function normalizedApiServerUrl(value) {
+  const url = String(value || '').trim().replace(/\/+$/, '');
+  if (!url) return '';
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+}
+
+function saveApiServerUrl(value) {
+  apiServerUrl = normalizedApiServerUrl(value);
+  localStorage.setItem('SV_API_SERVER_URL', apiServerUrl);
+  document.querySelectorAll('.api-server-input').forEach((input) => {
+    input.value = apiServerUrl;
+  });
+}
+
+function jsonApiUrl() {
+  if (!activeDeviceId) return '';
+  const origin = apiServerUrl || window.location.origin;
+  return `${origin}/api/device/${encodeURIComponent(activeDeviceId)}/telemetry.json`;
+}
 
 async function apiFetch(path, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90000);
   try {
+    if (isDesktopApp) {
+      if (!apiServerUrl) throw new Error('Set the SysVitals API URL before signing in.');
+      const response = await window.__TAURI__.core.invoke('api_request', {
+        baseUrl: apiServerUrl,
+        path,
+        method: options.method || 'GET',
+        body: options.body || null,
+      });
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        headers: new Headers({ 'content-type': response.content_type || '' }),
+        json: async () => response.body ? JSON.parse(response.body) : {},
+      };
+    }
     return await fetch(path, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
@@ -178,6 +215,7 @@ function toggleAuth(showLogin) {
 }
 
 async function handleRegister() {
+  if (isDesktopApp) saveApiServerUrl(document.getElementById('registerApiUrl')?.value);
   const user = document.getElementById('regUser').value.trim();
   const pass = document.getElementById('regPass').value;
   const confirm = document.getElementById('regConfirm').value;
@@ -219,6 +257,7 @@ async function handleRegister() {
 }
 
 async function handleLogin() {
+  if (isDesktopApp) saveApiServerUrl(document.getElementById('loginApiUrl')?.value);
   const user = document.getElementById('loginUser').value.trim();
   const pass = document.getElementById('loginPass').value;
   const errEl = document.getElementById('loginError');
@@ -263,7 +302,28 @@ function handleLogout() {
   window.location.href = 'login.html';
 }
 
+async function copyTelemetryJsonUrl() {
+  const url = jsonApiUrl();
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    const button = document.querySelector('[onclick="copyTelemetryJsonUrl()"]');
+    if (button) {
+      button.textContent = 'JSON API URL Copied';
+      setTimeout(() => { button.textContent = 'Copy JSON API URL'; }, 2000);
+    }
+  } catch (error) {
+    window.prompt('Copy this JSON API URL:', url);
+  }
+}
+
 function initView() {
+  if (isDesktopApp) {
+    document.body.classList.add('desktop-app');
+    document.querySelectorAll('.api-server-input').forEach((input) => {
+      input.value = apiServerUrl;
+    });
+  }
   const isLoginPage = !!document.getElementById('authContainer');
   const isDashboardPage = !!document.getElementById('dashboardContainer');
   

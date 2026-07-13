@@ -40,8 +40,9 @@
 
   <!-- DETAILED TELEMETRY PANEL -->
   <div id="telemetryContainer" style="display: none;">
-    <div style="margin-bottom: 20px;">
+    <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
       <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="goBackToDevices()">&larr; Back to Devices</button>
+      <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="copyTelemetryJsonUrl()">Copy JSON API URL</button>
     </div>
     <div class="panels-grid">
       <!-- CPU LIVE PANEL -->

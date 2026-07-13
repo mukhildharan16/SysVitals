@@ -6,13 +6,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import bcrypt
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 
 from .database import (
     create_device,
     create_user,
     get_device_by_secret,
     get_latest_telemetry,
+    get_telemetry_history,
     get_user_by_username,
     get_user_devices,
     initialize_database,
@@ -121,7 +122,8 @@ def get_device_latest(device_id: str):
                 "cpu_temp", "power_mode", "cpu_power", "cpu_clock", "cpu_util",
                 "gpu_name", "gpu_temp", "gpu_power", "gpu_util", "gpu_mem_used",
                 "gpu_mem_total", "gpu_active", "ac_plugged", "battery_power",
-                "battery_voltage", "battery_level",
+                "battery_voltage", "battery_level", "memory_used_mb",
+                "applications_open", "uptime_seconds", "current_user",
             )
         },
     }
@@ -130,6 +132,17 @@ def get_device_latest(device_id: str):
             result[boolean_field] = bool(result[boolean_field])
     latest_reading[device_id] = result
     return result
+
+
+@app.get("/api/device/{device_id}/telemetry.json")
+def get_device_telemetry_json(
+    device_id: str, limit: int = Query(default=100, ge=1, le=1000)
+):
+    """Expose recent raw monitor readings as a JSON document for integrations."""
+    readings = get_telemetry_history(device_id, limit)
+    if not readings:
+        raise HTTPException(status_code=404, detail="No telemetry data found for this device")
+    return {"device_id": device_id, "count": len(readings), "readings": readings}
 
 
 def _utc_now() -> str:

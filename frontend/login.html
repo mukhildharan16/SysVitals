@@ -39,6 +39,10 @@
         <label for="loginPass">Password</label>
         <input type="password" id="loginPass" class="form-input" placeholder="Enter password" />
       </div>
+      <div class="form-group desktop-only">
+        <label for="loginApiUrl">SysVitals API URL</label>
+        <input type="url" id="loginApiUrl" class="form-input api-server-input" placeholder="https://status.example.com" onchange="saveApiServerUrl(this.value)" />
+      </div>
       <button class="btn-submit" onclick="handleLogin()">Login</button>
       <div class="error-msg" id="loginError"></div>
       <div class="auth-toggle">
@@ -62,6 +66,10 @@
       <div class="form-group">
         <label for="regConfirm">Confirm Password</label>
         <input type="password" id="regConfirm" class="form-input" placeholder="Confirm password" />
+      </div>
+      <div class="form-group desktop-only">
+        <label for="registerApiUrl">SysVitals API URL</label>
+        <input type="url" id="registerApiUrl" class="form-input api-server-input" placeholder="https://status.example.com" onchange="saveApiServerUrl(this.value)" />
       </div>
       <button class="btn-submit" onclick="handleRegister()">Create Account</button>
       <div class="error-msg" id="regError"></div>

@@ -4,6 +4,7 @@ import os
 import secrets
 import sqlite3
 import uuid
+import json
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,10 @@ def initialize_database() -> None:
                 battery_power REAL,
                 battery_voltage REAL,
                 battery_level REAL,
+                memory_used_mb REAL,
+                applications_open TEXT,
+                uptime_seconds REAL,
+                current_user TEXT,
                 power_mode TEXT
             );
 
@@ -72,6 +77,22 @@ def initialize_database() -> None:
             CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
             """
         )
+        _add_telemetry_columns(connection)
+
+
+def _add_telemetry_columns(connection: sqlite3.Connection) -> None:
+    """Migrate telemetry databases created before supplemental vitals existed."""
+    existing_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(telemetry)")
+    }
+    for column, sql_type in (
+        ("memory_used_mb", "REAL"),
+        ("applications_open", "TEXT"),
+        ("uptime_seconds", "REAL"),
+        ("current_user", "TEXT"),
+    ):
+        if column not in existing_columns:
+            connection.execute(f"ALTER TABLE telemetry ADD COLUMN {column} {sql_type}")
 
 
 def get_user_by_username(username: str) -> dict[str, Any] | None:
@@ -152,9 +173,18 @@ def save_telemetry(device_id: str, timestamp: str, telemetry: dict[str, Any]) ->
         "battery_power",
         "battery_voltage",
         "battery_level",
+        "memory_used_mb",
+        "applications_open",
+        "uptime_seconds",
+        "current_user",
         "power_mode",
     )
-    values = [telemetry.get(column) for column in columns]
+    values = [
+        json.dumps(telemetry["applications_open"])
+        if column == "applications_open" and telemetry.get(column) is not None
+        else telemetry.get(column)
+        for column in columns
+    ]
     with _connect() as connection:
         connection.execute(
             "UPDATE devices SET last_seen = ? WHERE id = ?", (timestamp, device_id)
@@ -172,4 +202,35 @@ def get_latest_telemetry(device_id: str) -> dict[str, Any] | None:
             "SELECT * FROM telemetry WHERE device_id = ? ORDER BY ts DESC LIMIT 1",
             (device_id,),
         ).fetchone()
-    return dict(row) if row else None
+    telemetry = dict(row) if row else None
+    if telemetry and telemetry["applications_open"] is not None:
+        try:
+            telemetry["applications_open"] = json.loads(telemetry["applications_open"])
+        except (TypeError, json.JSONDecodeError):
+            telemetry["applications_open"] = []
+    return telemetry
+
+
+def get_telemetry_history(device_id: str, limit: int) -> list[dict[str, Any]]:
+    """Return recent monitor payloads in chronological order for the JSON feed."""
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT * FROM (
+                SELECT * FROM telemetry WHERE device_id = ? ORDER BY ts DESC LIMIT ?
+            ) ORDER BY ts ASC
+            """,
+            (device_id, limit),
+        ).fetchall()
+
+    readings = [dict(row) for row in rows]
+    for reading in readings:
+        if reading["applications_open"] is not None:
+            try:
+                reading["applications_open"] = json.loads(reading["applications_open"])
+            except (TypeError, json.JSONDecodeError):
+                reading["applications_open"] = []
+        for boolean_field in ("gpu_active", "ac_plugged"):
+            if reading[boolean_field] is not None:
+                reading[boolean_field] = bool(reading[boolean_field])
+    return readings

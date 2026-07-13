@@ -73,6 +73,8 @@ header{
   flex-direction: column;
   gap: 6px;
 }
+.desktop-only { display: none; }
+body.desktop-app .desktop-only { display: flex; }
 .form-group label {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;

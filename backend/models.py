@@ -29,4 +29,8 @@ class TelemetryIngest(BaseModel):
     battery_power: float | None = None
     battery_voltage: float | None = None
     battery_level: float | None = None
+    memory_used_mb: float | None = None
+    applications_open: list[str] | None = None
+    uptime_seconds: float | None = None
+    current_user: str | None = None
     power_mode: str

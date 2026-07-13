@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SysVitals Desktop",
+  "version": "0.1.0",
+  "identifier": "dev.mukhildharan.sysvitals",
+  "build": {
+    "frontendDist": "../../frontend"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "SysVitals Desktop",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 650,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

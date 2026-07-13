@@ -19,3 +19,6 @@ backend/data/
 *.db-shm
 *.db-wal
 logs/
+
+# Rust/Tauri build output
+target/
