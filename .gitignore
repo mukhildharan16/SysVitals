@@ -22,3 +22,7 @@ logs/
 
 # Rust/Tauri build output
 target/
+desktop/src-tauri/gen/
+
+# Locally built desktop installer
+receiver_app/

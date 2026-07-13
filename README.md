@@ -5,6 +5,28 @@ runs on each computer you want to observe and sends CPU, GPU, battery, and
 power-profile data to the SysVitals API. The dashboard then displays that data
 from any browser.
 
+## Dashboard telemetry
+
+![SysVitals dashboard showing CPU, GPU, and power telemetry](docs/assets/dashboard-telemetry.png)
+
+The dashboard groups the live readings into three panels:
+
+- **CPU telemetry**: The gauge shows CPU temperature. **Utilization** is the
+  percentage of CPU currently in use; **Power Draw** is CPU package power;
+  **Clock Speed** is the current CPU frequency; **Estimated Fan Speed** is a
+  temperature-based estimate; and **Last Updated** shows when the latest
+  reading arrived. The chip identifies the active power profile.
+- **GPU telemetry**: The gauge shows GPU temperature and the chip identifies
+  the detected graphics card. **GPU Utilization** is its current workload;
+  **Power Draw** is board power; **VRAM Utilization** compares used and total
+  graphics memory; **Estimated Fan Speed** is temperature-based; and **GPU
+  Last Awake** records the most recent successful GPU reading.
+- **Power analytics**: The gauge shows the active system power estimate.
+  **CPU Package Power** and **GPU Board Power** break out the two main
+  contributors, while **Battery Power Draw** and **Battery Status** report the
+  battery's charge/discharge state and percentage. The chip shows whether the
+  device is on AC power or battery.
+
 This guide deploys SysVitals **without Docker** on Ubuntu in WSL 2. It uses a
 Cloudflare Tunnel to publish `https://status.example.com` securely. You
 do **not** need a public IP address, router port-forwarding, Windows firewall
@@ -273,21 +295,21 @@ On Windows, run the terminal as Administrator if the hardware-sensor library
 cannot access CPU or GPU readings. Open the dashboard and select the device to
 confirm that telemetry is arriving.
 
-## 8. JSON feed and desktop GUI
+## 8. Authenticated API and desktop GUI
 
-When viewing a device's telemetry, use **Copy JSON API URL** to copy its raw
-readings feed. The endpoint returns the latest 100 readings by default:
+The device API is protected by the access token issued at login. Device lists,
+live telemetry, and the raw readings feed reject requests without an
+`Authorization: Bearer ACCESS_TOKEN` header. Do not share that token or place
+it in a public URL.
 
-```text
-https://status.example.com/api/device/DEVICE_ID/telemetry.json
-```
-
-Use `?limit=500` to request more readings (up to 1000). The feed includes all
-fields received from the monitor, including supplemental system details.
+When viewing a device, **Copy Protected API Command** copies an authenticated
+`curl` command for its JSON feed. The feed returns the latest 100 readings by
+default; add `?limit=500` to request more readings (up to 1000).
 
 The standalone desktop GUI is in [`desktop/README.md`](desktop/README.md). It
-uses the same dashboard HTML, CSS, and JavaScript and fetches the public
-SysVitals API through its Rust receiver.
+uses the same dashboard HTML, CSS, and JavaScript, and sends the login token
+through its Rust receiver automatically. On its login screen, enter only the
+base URL, such as `https://status.example.com`—not an `/api/...` endpoint.
 
 ## Everyday operations
 

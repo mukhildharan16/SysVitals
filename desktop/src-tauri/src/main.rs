@@ -18,6 +18,7 @@ async fn api_request(
     path: String,
     method: String,
     body: Option<String>,
+    authorization: Option<String>,
 ) -> Result<ApiResponse, String> {
     if !path.starts_with('/') || path.starts_with("//") {
         return Err("API path must be a local path beginning with '/'.".into());
@@ -40,6 +41,9 @@ async fn api_request(
         .build()
         .map_err(|error| error.to_string())?;
     let mut request = client.request(method, url);
+    if let Some(authorization) = authorization {
+        request = request.header("authorization", authorization);
+    }
     if let Some(body) = body {
         request = request.header("content-type", "application/json").body(body);
     }

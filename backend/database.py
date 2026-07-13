@@ -5,6 +5,7 @@ import secrets
 import sqlite3
 import uuid
 import json
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,12 @@ def initialize_database() -> None:
                 last_seen TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS access_tokens (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS telemetry (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
@@ -75,6 +82,7 @@ def initialize_database() -> None:
                 ON telemetry(device_id, ts DESC);
             CREATE INDEX IF NOT EXISTS idx_devices_secret ON devices(device_secret);
             CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
+            CREATE INDEX IF NOT EXISTS idx_access_tokens_user ON access_tokens(user_id);
             """
         )
         _add_telemetry_columns(connection)
@@ -116,6 +124,27 @@ def create_user(username: str, password_hash: str, created_at: str) -> str | Non
     return user_id
 
 
+def create_access_token(user_id: str, created_at: str) -> str:
+    """Create a persistent bearer token without storing the raw secret."""
+    token = f"svat_{secrets.token_urlsafe(32)}"
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with _connect() as connection:
+        connection.execute(
+            "INSERT INTO access_tokens (token_hash, user_id, created_at) VALUES (?, ?, ?)",
+            (token_hash, user_id, created_at),
+        )
+    return token
+
+
+def get_user_by_access_token(token: str) -> dict[str, Any] | None:
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT user_id AS id FROM access_tokens WHERE token_hash = ?", (token_hash,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def create_device(
     user_id: str, name: str, hostname: str | None, created_at: str
 ) -> str | None:
@@ -150,8 +179,16 @@ def get_user_devices(user_id: str) -> list[dict[str, Any]]:
 def get_device_by_secret(device_secret: str) -> dict[str, Any] | None:
     with _connect() as connection:
         row = connection.execute(
-            "SELECT id, name, hostname FROM devices WHERE device_secret = ?",
+            "SELECT id, user_id, name, hostname FROM devices WHERE device_secret = ?",
             (device_secret,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def get_device(device_id: str) -> dict[str, Any] | None:
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT id, user_id, name, hostname FROM devices WHERE id = ?", (device_id,)
         ).fetchone()
     return dict(row) if row else None
 

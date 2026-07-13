@@ -4,6 +4,7 @@ const HOT  = getComputedStyle(document.documentElement).getPropertyValue('--hot'
 const CRIT = getComputedStyle(document.documentElement).getPropertyValue('--crit').trim();
 const isDesktopApp = Boolean(window.__TAURI__?.core?.invoke);
 let apiServerUrl = localStorage.getItem('SV_API_SERVER_URL') || '';
+let accessToken = localStorage.getItem('TW_ACCESS_TOKEN') || '';
 
 function normalizedApiServerUrl(value) {
   const url = String(value || '').trim().replace(/\/+$/, '');
@@ -36,6 +37,7 @@ async function apiFetch(path, options = {}) {
         path,
         method: options.method || 'GET',
         body: options.body || null,
+        authorization: accessToken ? `Bearer ${accessToken}` : null,
       });
       return {
         ok: response.status >= 200 && response.status < 300,
@@ -44,7 +46,9 @@ async function apiFetch(path, options = {}) {
         json: async () => response.body ? JSON.parse(response.body) : {},
       };
     }
-    return await fetch(path, { ...options, signal: controller.signal });
+    const headers = new Headers(options.headers || {});
+    if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
+    return await fetch(path, { ...options, headers, signal: controller.signal });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -71,6 +75,7 @@ let telemetryTimer = null;
 let devicesTimer = null;
 let refreshInProgress = false;
 let devicesLoadInProgress = false;
+const TELEMETRY_REFRESH_MS = 5000;
 
 // Thresholds tuned for typical components
 const CPU_THRESH = [ [70, COOL], [80, WARM], [90, HOT], [999, CRIT] ];
@@ -285,8 +290,10 @@ async function handleLogin() {
     
     userId = d.user_id;
     username = user;
+    accessToken = d.access_token;
     localStorage.setItem('TW_USER_ID', userId);
     localStorage.setItem('TW_USERNAME', username);
+    localStorage.setItem('TW_ACCESS_TOKEN', accessToken);
     window.location.href = 'dashboard.html';
   } catch (err) {
     if (errEl) errEl.textContent = networkErrorMessage(err, 'login');
@@ -296,24 +303,27 @@ async function handleLogin() {
 function handleLogout() {
   localStorage.removeItem('TW_USER_ID');
   localStorage.removeItem('TW_USERNAME');
+  localStorage.removeItem('TW_ACCESS_TOKEN');
   userId = '';
   username = '';
+  accessToken = '';
   activeDeviceId = null;
   window.location.href = 'login.html';
 }
 
 async function copyTelemetryJsonUrl() {
   const url = jsonApiUrl();
-  if (!url) return;
+  if (!url || !accessToken) return;
+  const command = `curl -H \"Authorization: Bearer ${accessToken}\" \"${url}\"`;
   try {
-    await navigator.clipboard.writeText(url);
+    await navigator.clipboard.writeText(command);
     const button = document.querySelector('[onclick="copyTelemetryJsonUrl()"]');
     if (button) {
-      button.textContent = 'JSON API URL Copied';
-      setTimeout(() => { button.textContent = 'Copy JSON API URL'; }, 2000);
+      button.textContent = 'Protected API Command Copied';
+      setTimeout(() => { button.textContent = 'Copy Protected API Command'; }, 2000);
     }
   } catch (error) {
-    window.prompt('Copy this JSON API URL:', url);
+    window.prompt('Copy this protected API command:', command);
   }
 }
 
@@ -334,7 +344,7 @@ function initView() {
     }
     toggleAuth(true);
   } else if (isDashboardPage) {
-    if (!userId) {
+    if (!userId || !accessToken) {
       window.location.href = 'login.html';
       return;
     }
@@ -348,7 +358,9 @@ function initView() {
       const gpuAwakeEl = document.getElementById('gpuLastAwake');
       if (gpuAwakeEl) gpuAwakeEl.textContent = '—';
       refreshLatest();
-      telemetryTimer = setInterval(refreshLatest, 500);
+      // Only metric elements change in refreshLatest; polling every five seconds
+      // prevents the gauge transitions from looking like a full-page refresh.
+      telemetryTimer = setInterval(refreshLatest, TELEMETRY_REFRESH_MS);
     } else {
       document.getElementById('dashboardContainer').style.display = 'block';
       document.getElementById('telemetryContainer').style.display = 'none';

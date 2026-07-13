@@ -6,15 +6,18 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import bcrypt
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
 from .database import (
     create_device,
+    create_access_token,
     create_user,
+    get_device,
     get_device_by_secret,
     get_latest_telemetry,
     get_telemetry_history,
     get_user_by_username,
+    get_user_by_access_token,
     get_user_devices,
     initialize_database,
     save_telemetry,
@@ -45,6 +48,23 @@ def health():
 latest_reading: dict[str, dict] = {}
 
 
+def get_current_user(authorization: str | None = Header(default=None)) -> dict:
+    """Authenticate dashboard and desktop API calls with a bearer token."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user = get_user_by_access_token(authorization.removeprefix("Bearer ").strip())
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid access token")
+    return user
+
+
+def get_owned_device(device_id: str, user: dict) -> dict:
+    device = get_device(device_id)
+    if not device or device["user_id"] != user["id"]:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
+
+
 @app.post("/api/register")
 def register(auth: UserAuth):
     password_hash = bcrypt.hashpw(
@@ -63,11 +83,17 @@ def login(auth: UserAuth):
         auth.password.encode("utf-8"), user["password_hash"].encode("utf-8")
     ):
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"success": True, "user_id": user["id"]}
+    return {
+        "success": True,
+        "user_id": user["id"],
+        "access_token": create_access_token(user["id"], _utc_now()),
+    }
 
 
 @app.post("/api/device/register")
-def register_device(device: DeviceRegister):
+def register_device(device: DeviceRegister, user: dict = Depends(get_current_user)):
+    if device.user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot register a device for another user")
     device_secret = create_device(
         device.user_id, device.device_name, device.hostname, _utc_now()
     )
@@ -77,7 +103,9 @@ def register_device(device: DeviceRegister):
 
 
 @app.get("/api/user/{user_id}/devices")
-def list_user_devices(user_id: str):
+def list_user_devices(user_id: str, user: dict = Depends(get_current_user)):
+    if user_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot view another user's devices")
     return get_user_devices(user_id)
 
 
@@ -101,7 +129,8 @@ def ingest(payload: TelemetryIngest):
 
 
 @app.get("/api/device/{device_id}/latest")
-def get_device_latest(device_id: str):
+def get_device_latest(device_id: str, user: dict = Depends(get_current_user)):
+    get_owned_device(device_id, user)
     if device_id in latest_reading:
         return latest_reading[device_id]
 
@@ -136,9 +165,12 @@ def get_device_latest(device_id: str):
 
 @app.get("/api/device/{device_id}/telemetry.json")
 def get_device_telemetry_json(
-    device_id: str, limit: int = Query(default=100, ge=1, le=1000)
+    device_id: str,
+    limit: int = Query(default=100, ge=1, le=1000),
+    user: dict = Depends(get_current_user),
 ):
     """Expose recent raw monitor readings as a JSON document for integrations."""
+    get_owned_device(device_id, user)
     readings = get_telemetry_history(device_id, limit)
     if not readings:
         raise HTTPException(status_code=404, detail="No telemetry data found for this device")

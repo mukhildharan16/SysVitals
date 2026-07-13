@@ -3,7 +3,8 @@
 This is a standalone Tauri desktop GUI. It embeds the existing `frontend/`
 HTML, CSS, and JavaScript, then fetches the configured SysVitals API through a
 small Rust HTTP bridge. The bridge avoids the CORS restriction a local webview
-would otherwise have when calling the deployed API.
+would otherwise have when calling the deployed API and forwards the access
+token received during login.
 
 ## Run or build on Windows
 
@@ -28,6 +29,7 @@ Create an installer with:
 cargo tauri build
 ```
 
-On the login screen, enter the public SysVitals URL, such as
-`https://status.example.com`, then sign in normally. The value is stored only
-in the desktop app's local storage.
+On the login screen, enter only the public SysVitals base URL, such as
+`https://status.example.com`, then sign in normally. Do not enter a full
+`/api/...` endpoint; the app adds API paths itself. The base URL and access
+token are stored only in the desktop app's local storage.
