@@ -7,9 +7,16 @@
   <script>
     // Simple static router redirecting based on auth state
     const userId = localStorage.getItem('TW_USER_ID');
-    if (userId) {
+    const accessToken = localStorage.getItem('TW_ACCESS_TOKEN');
+    if (userId && accessToken) {
       window.location.href = 'dashboard.html';
     } else {
+      // Older/incomplete sessions cannot open the protected dashboard. Remove
+      // them before redirecting so login and dashboard cannot redirect each
+      // other in a loop.
+      localStorage.removeItem('TW_USER_ID');
+      localStorage.removeItem('TW_USERNAME');
+      localStorage.removeItem('TW_ACCESS_TOKEN');
       window.location.href = 'login.html';
     }
   </script>

@@ -77,6 +77,21 @@ let refreshInProgress = false;
 let devicesLoadInProgress = false;
 const TELEMETRY_REFRESH_MS = 5000;
 
+function hasAuthenticatedSession() {
+  return Boolean(userId && accessToken);
+}
+
+function clearIncompleteSession() {
+  if (Boolean(userId) !== Boolean(accessToken)) {
+    localStorage.removeItem('TW_USER_ID');
+    localStorage.removeItem('TW_USERNAME');
+    localStorage.removeItem('TW_ACCESS_TOKEN');
+    userId = '';
+    username = '';
+    accessToken = '';
+  }
+}
+
 // Thresholds tuned for typical components
 const CPU_THRESH = [ [70, COOL], [80, WARM], [90, HOT], [999, CRIT] ];
 const GPU_THRESH = [ [60, COOL], [70, WARM], [80, HOT], [999, CRIT] ];
@@ -338,13 +353,15 @@ function initView() {
   const isDashboardPage = !!document.getElementById('dashboardContainer');
   
   if (isLoginPage) {
-    if (userId) {
+    clearIncompleteSession();
+    if (hasAuthenticatedSession()) {
       window.location.href = 'dashboard.html';
       return;
     }
     toggleAuth(true);
   } else if (isDashboardPage) {
-    if (!userId || !accessToken) {
+    if (!hasAuthenticatedSession()) {
+      clearIncompleteSession();
       window.location.href = 'login.html';
       return;
     }
