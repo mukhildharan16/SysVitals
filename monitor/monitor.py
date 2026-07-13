@@ -1,5 +1,6 @@
 import os
 import getpass
+import platform
 import subprocess
 import sys
 import time
@@ -33,10 +34,49 @@ def normalize_server_url(value: str) -> str:
 SERVER_URL = normalize_server_url(os.environ.get("TW_SERVER_URL", ""))
 DEVICE_SECRET = os.environ.get("TW_DEVICE_SECRET", "")
 INTERVAL = float(os.environ.get("TW_INTERVAL_SECONDS", "10.0"))
+HTTP_CONNECT_TIMEOUT = float(os.environ.get("TW_HTTP_CONNECT_TIMEOUT", "3.0"))
+HTTP_READ_TIMEOUT = float(os.environ.get("TW_HTTP_READ_TIMEOUT", "10.0"))
+
+# Keep one outbound connection open.  Recreating a TLS connection on every
+# report can be very slow on networks where an unusable address family must
+# time out before Cloudflare's reachable endpoint is tried.
+HTTP_SESSION = requests.Session()
 
 
 IS_WINDOWS = sys.platform == "win32"
 _computer = None
+_cpu_model: str | None = None
+_cpu_model_loaded = False
+
+
+def get_cpu_model() -> str | None:
+    """Return the processor marketing name once; it does not change at runtime."""
+    global _cpu_model, _cpu_model_loaded
+    if _cpu_model_loaded:
+        return _cpu_model
+
+    _cpu_model_loaded = True
+    try:
+        if IS_WINDOWS:
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE,
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+            ) as key:
+                _cpu_model = str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
+        elif os.path.exists("/proc/cpuinfo"):
+            with open("/proc/cpuinfo", encoding="utf-8") as cpuinfo:
+                for line in cpuinfo:
+                    if line.lower().startswith("model name") and ":" in line:
+                        _cpu_model = line.split(":", 1)[1].strip()
+                        break
+    except (OSError, ValueError):
+        pass
+
+    if not _cpu_model:
+        _cpu_model = platform.processor().strip() or None
+    return _cpu_model
 
 
 def init_windows_sensors():
@@ -344,6 +384,7 @@ def get_vitals() -> dict:
 def get_system_details() -> dict:
     """Return supplemental system information independent of hardware sensors."""
     details = {
+        "cpu_name": get_cpu_model(),
         "memory_used_mb": None,
         "applications_open": None,
         "uptime_seconds": None,
@@ -537,6 +578,7 @@ def get_power_mode() -> str:
 def send_reading(vitals: dict, power_mode: str):
     payload = {
         "device_secret": DEVICE_SECRET,
+        "cpu_name": vitals.get("cpu_name"),
         "cpu_temp": vitals.get("cpu_temp"),
         "cpu_power": vitals.get("cpu_power"),
         "cpu_clock": vitals.get("cpu_clock"),
@@ -559,7 +601,11 @@ def send_reading(vitals: dict, power_mode: str):
         "power_mode": power_mode
     }
     
-    resp = requests.post(f"{SERVER_URL}/api/ingest", json=payload, timeout=10)
+    resp = HTTP_SESSION.post(
+        f"{SERVER_URL}/api/ingest",
+        json=payload,
+        timeout=(HTTP_CONNECT_TIMEOUT, HTTP_READ_TIMEOUT),
+    )
     resp.raise_for_status()
 
 
@@ -612,6 +658,7 @@ def main():
                 print(f"Failed to send reading: {e}", file=sys.stderr)
             time.sleep(INTERVAL)
     finally:
+        HTTP_SESSION.close()
         gpu_monitor.shutdown()
         if IS_WINDOWS and _computer is not None:
             try:

@@ -47,7 +47,7 @@
     <div class="panels-grid">
       <!-- CPU LIVE PANEL -->
       <div class="panel">
-        <div class="panel-title">CPU Telemetry</div>
+        <div class="panel-title" id="cpuPanelTitle">CPU</div>
         <div class="gauge-wrap">
           <div class="gauge">
             <svg viewBox="0 0 240 240">
@@ -71,7 +71,7 @@
 
       <!-- GPU LIVE PANEL -->
       <div class="panel">
-        <div class="panel-title">GPU Telemetry</div>
+        <div class="panel-title" id="gpuPanelTitle">GPU</div>
         <div class="gauge-wrap">
           <div class="gauge">
             <svg viewBox="0 0 240 240">
@@ -84,7 +84,7 @@
               <div class="gauge-unit">°C</div>
             </div>
           </div>
-          <div class="mode-chip" id="gpuChip" style="text-transform:none;">no GPU detected</div>
+          <div class="mode-chip" id="gpuChip">No GPU Detected</div>
         </div>
         <div class="stat-row"><span>GPU Utilization</span><b id="gpuUtilVal">—</b></div>
         <div class="stat-row"><span>Power Draw</span><b id="gpuPowerVal">—</b></div>

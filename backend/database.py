@@ -56,6 +56,7 @@ def initialize_database() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
                 ts TEXT NOT NULL,
+                cpu_name TEXT,
                 cpu_temp REAL,
                 cpu_power REAL,
                 cpu_clock REAL,
@@ -94,6 +95,7 @@ def _add_telemetry_columns(connection: sqlite3.Connection) -> None:
         row["name"] for row in connection.execute("PRAGMA table_info(telemetry)")
     }
     for column, sql_type in (
+        ("cpu_name", "TEXT"),
         ("memory_used_mb", "REAL"),
         ("applications_open", "TEXT"),
         ("uptime_seconds", "REAL"),
@@ -195,6 +197,7 @@ def get_device(device_id: str) -> dict[str, Any] | None:
 
 def save_telemetry(device_id: str, timestamp: str, telemetry: dict[str, Any]) -> None:
     columns = (
+        "cpu_name",
         "cpu_temp",
         "cpu_power",
         "cpu_clock",

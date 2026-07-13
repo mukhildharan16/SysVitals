@@ -14,6 +14,7 @@ class DeviceRegister(BaseModel):
 
 class TelemetryIngest(BaseModel):
     device_secret: str
+    cpu_name: str | None = None
     cpu_temp: float | None = None
     cpu_power: float | None = None
     cpu_clock: float | None = None

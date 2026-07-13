@@ -533,6 +533,11 @@ async function refreshLatest(){
     const hostLabel = document.getElementById('hostLabel');
     if (liveDot) liveDot.classList.add('live');
     if (hostLabel) hostLabel.textContent = 'online';
+
+    const cpuPanelTitle = document.getElementById('cpuPanelTitle');
+    if (cpuPanelTitle) cpuPanelTitle.textContent = d.cpu_name || 'CPU';
+    const gpuPanelTitle = document.getElementById('gpuPanelTitle');
+    if (gpuPanelTitle) gpuPanelTitle.textContent = d.gpu_name || 'GPU';
     
     // CPU
     const cpuTemp = typeof d.cpu_temp === 'number' ? d.cpu_temp : 0;
@@ -598,18 +603,18 @@ async function refreshLatest(){
     if (gpuChip) {
       if (d.gpu_name) {
         if (d.gpu_active === false) {
-          gpuChip.textContent = `${d.gpu_name} (Sleeping)`;
+          gpuChip.textContent = 'GPU Sleeping';
           gpuChip.style.borderColor = '#7C8798';
           gpuChip.style.color = '#7C8798';
           gpuChip.style.boxShadow = 'none';
         } else {
-          gpuChip.textContent = d.gpu_name;
+          gpuChip.textContent = 'GPU Active';
           gpuChip.style.borderColor = COOL;
           gpuChip.style.color = COOL;
           gpuChip.style.boxShadow = `0 0 16px ${COOL}33`;
         }
       } else {
-        gpuChip.textContent = 'no GPU detected';
+        gpuChip.textContent = 'No GPU Detected';
         gpuChip.style.borderColor = '#7C8798';
         gpuChip.style.color = '#7C8798';
         gpuChip.style.boxShadow = 'none';
