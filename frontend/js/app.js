@@ -75,7 +75,9 @@ let telemetryTimer = null;
 let devicesTimer = null;
 let refreshInProgress = false;
 let devicesLoadInProgress = false;
-const TELEMETRY_REFRESH_MS = 5000;
+// The monitor uploads twice a second; refresh the visible metrics every second
+// so the dashboard feels live without creating unnecessary API traffic.
+const TELEMETRY_REFRESH_MS = 500;
 
 function hasAuthenticatedSession() {
   return Boolean(userId && accessToken);
@@ -90,6 +92,10 @@ function clearIncompleteSession() {
     username = '';
     accessToken = '';
   }
+}
+
+function navigateTo(path) {
+  window.location.replace(path);
 }
 
 // Thresholds tuned for typical components
@@ -309,7 +315,7 @@ async function handleLogin() {
     localStorage.setItem('TW_USER_ID', userId);
     localStorage.setItem('TW_USERNAME', username);
     localStorage.setItem('TW_ACCESS_TOKEN', accessToken);
-    window.location.href = 'dashboard.html';
+    navigateTo('dashboard.html');
   } catch (err) {
     if (errEl) errEl.textContent = networkErrorMessage(err, 'login');
   }
@@ -323,7 +329,7 @@ function handleLogout() {
   username = '';
   accessToken = '';
   activeDeviceId = null;
-  window.location.href = 'login.html';
+  navigateTo('login.html');
 }
 
 async function copyTelemetryJsonUrl() {
@@ -355,14 +361,14 @@ function initView() {
   if (isLoginPage) {
     clearIncompleteSession();
     if (hasAuthenticatedSession()) {
-      window.location.href = 'dashboard.html';
+      navigateTo('dashboard.html');
       return;
     }
     toggleAuth(true);
   } else if (isDashboardPage) {
     if (!hasAuthenticatedSession()) {
       clearIncompleteSession();
-      window.location.href = 'login.html';
+      navigateTo('login.html');
       return;
     }
     
@@ -375,7 +381,7 @@ function initView() {
       const gpuAwakeEl = document.getElementById('gpuLastAwake');
       if (gpuAwakeEl) gpuAwakeEl.textContent = '—';
       refreshLatest();
-      // Only metric elements change in refreshLatest; polling every five seconds
+      // Only metric elements change in refreshLatest; polling every second
       // prevents the gauge transitions from looking like a full-page refresh.
       telemetryTimer = setInterval(refreshLatest, TELEMETRY_REFRESH_MS);
     } else {

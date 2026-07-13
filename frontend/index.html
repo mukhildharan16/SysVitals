@@ -5,20 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SysVitals Dashboard</title>
   <script>
-    // Simple static router redirecting based on auth state
-    const userId = localStorage.getItem('TW_USER_ID');
-    const accessToken = localStorage.getItem('TW_ACCESS_TOKEN');
-    if (userId && accessToken) {
-      window.location.href = 'dashboard.html';
-    } else {
-      // Older/incomplete sessions cannot open the protected dashboard. Remove
-      // them before redirecting so login and dashboard cannot redirect each
-      // other in a loop.
-      localStorage.removeItem('TW_USER_ID');
-      localStorage.removeItem('TW_USERNAME');
-      localStorage.removeItem('TW_ACCESS_TOKEN');
-      window.location.href = 'login.html';
-    }
+    // Keep the root page neutral.  Login owns the session check, which avoids
+    // the old dashboard/index/login redirect cycle for stale browser storage.
+    window.location.replace('login.html');
   </script>
 </head>
 <body style="background: #0B0E14; color: #E9EEF3; font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh;">
