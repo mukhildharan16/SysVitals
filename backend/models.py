@@ -14,6 +14,10 @@ class DeviceRegister(BaseModel):
 
 class TelemetryIngest(BaseModel):
     device_secret: str
+    os_name: str | None = None
+    os_version: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
     cpu_name: str | None = None
     cpu_temp: float | None = None
     cpu_power: float | None = None
@@ -35,3 +39,6 @@ class TelemetryIngest(BaseModel):
     uptime_seconds: float | None = None
     current_user: str | None = None
     power_mode: str
+    # Maps a metric name to the reason it could not be read on this host.
+    # A null metric without an entry means it has not been sampled yet.
+    metric_errors: dict[str, str] | None = None

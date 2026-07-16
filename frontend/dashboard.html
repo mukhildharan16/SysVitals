@@ -44,6 +44,7 @@
       <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="goBackToDevices()">&larr; Back to Devices</button>
       <button class="btn-submit btn-secondary" style="padding: 8px 16px;" onclick="copyTelemetryJsonUrl()">Copy Protected API Command</button>
     </div>
+    <div id="deviceDetails" style="margin: -8px 0 16px; color: var(--muted); font-size: 13px;">Detecting device details…</div>
     <div class="panels-grid">
       <!-- CPU LIVE PANEL -->
       <div class="panel">
@@ -116,6 +117,7 @@
         <div class="stat-row"><span>Battery Status</span><b id="batteryStatusVal">—</b></div>
       </div>
     </div>
+    <div id="telemetryError" class="error-msg" role="status" style="margin-top: 14px; display: none;"></div>
   </div>
 
   <!-- ADD DEVICE MODAL -->

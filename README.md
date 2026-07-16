@@ -295,6 +295,22 @@ On Windows, run the terminal as Administrator if the hardware-sensor library
 cannot access CPU or GPU readings. Open the dashboard and select the device to
 confirm that telemetry is arriving.
 
+### Linux monitor support
+
+The monitor automatically detects Linux, the DMI manufacturer, and model. On
+Linux it reads CPU temperature, utilization, frequency, RAPL package power
+when the kernel exposes it, battery/AC data from `sysfs`, NVIDIA telemetry
+through NVML, and AMD/Intel DRM telemetry where the driver exposes it. It never
+substitutes zero for an unavailable sensor: the dashboard shows an
+**Unavailable metrics** message with the exact cause.
+
+For Lenovo systems, the monitor first reads the standard
+`/sys/firmware/acpi/platform_profile` interface published by
+LenovoLegionLinux. If no profile is exposed, it checks for `legion_cli` (or a
+path set in `SV_LENOVO_LEGION_CLI`) and reports the required setup clearly. The
+monitor only performs read-only checks; it does not change a Legion fan curve
+or power mode.
+
 ## 8. Authenticated API and desktop GUI
 
 The device API is protected by the access token issued at login. Device lists,

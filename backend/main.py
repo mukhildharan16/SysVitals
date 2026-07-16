@@ -148,11 +148,12 @@ def get_device_latest(device_id: str, user: dict = Depends(get_current_user)):
         **{
             key: record[key]
             for key in (
+                "os_name", "os_version", "manufacturer", "model",
                 "cpu_name", "cpu_temp", "power_mode", "cpu_power", "cpu_clock", "cpu_util",
                 "gpu_name", "gpu_temp", "gpu_power", "gpu_util", "gpu_mem_used",
                 "gpu_mem_total", "gpu_active", "ac_plugged", "battery_power",
                 "battery_voltage", "battery_level", "memory_used_mb",
-                "applications_open", "uptime_seconds", "current_user",
+                "applications_open", "uptime_seconds", "current_user", "metric_errors",
             )
         },
     }

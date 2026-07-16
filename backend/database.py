@@ -56,6 +56,10 @@ def initialize_database() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
                 ts TEXT NOT NULL,
+                os_name TEXT,
+                os_version TEXT,
+                manufacturer TEXT,
+                model TEXT,
                 cpu_name TEXT,
                 cpu_temp REAL,
                 cpu_power REAL,
@@ -76,7 +80,8 @@ def initialize_database() -> None:
                 applications_open TEXT,
                 uptime_seconds REAL,
                 current_user TEXT,
-                power_mode TEXT
+                power_mode TEXT,
+                metric_errors TEXT
             );
 
             CREATE INDEX IF NOT EXISTS idx_telemetry_device_ts
@@ -95,11 +100,16 @@ def _add_telemetry_columns(connection: sqlite3.Connection) -> None:
         row["name"] for row in connection.execute("PRAGMA table_info(telemetry)")
     }
     for column, sql_type in (
+        ("os_name", "TEXT"),
+        ("os_version", "TEXT"),
+        ("manufacturer", "TEXT"),
+        ("model", "TEXT"),
         ("cpu_name", "TEXT"),
         ("memory_used_mb", "REAL"),
         ("applications_open", "TEXT"),
         ("uptime_seconds", "REAL"),
         ("current_user", "TEXT"),
+        ("metric_errors", "TEXT"),
     ):
         if column not in existing_columns:
             connection.execute(f"ALTER TABLE telemetry ADD COLUMN {column} {sql_type}")
@@ -197,6 +207,10 @@ def get_device(device_id: str) -> dict[str, Any] | None:
 
 def save_telemetry(device_id: str, timestamp: str, telemetry: dict[str, Any]) -> None:
     columns = (
+        "os_name",
+        "os_version",
+        "manufacturer",
+        "model",
         "cpu_name",
         "cpu_temp",
         "cpu_power",
@@ -218,10 +232,11 @@ def save_telemetry(device_id: str, timestamp: str, telemetry: dict[str, Any]) ->
         "uptime_seconds",
         "current_user",
         "power_mode",
+        "metric_errors",
     )
     values = [
-        json.dumps(telemetry["applications_open"])
-        if column == "applications_open" and telemetry.get(column) is not None
+        json.dumps(telemetry[column])
+        if column in ("applications_open", "metric_errors") and telemetry.get(column) is not None
         else telemetry.get(column)
         for column in columns
     ]
@@ -243,11 +258,8 @@ def get_latest_telemetry(device_id: str) -> dict[str, Any] | None:
             (device_id,),
         ).fetchone()
     telemetry = dict(row) if row else None
-    if telemetry and telemetry["applications_open"] is not None:
-        try:
-            telemetry["applications_open"] = json.loads(telemetry["applications_open"])
-        except (TypeError, json.JSONDecodeError):
-            telemetry["applications_open"] = []
+    if telemetry:
+        _decode_json_fields(telemetry)
     return telemetry
 
 
@@ -265,12 +277,18 @@ def get_telemetry_history(device_id: str, limit: int) -> list[dict[str, Any]]:
 
     readings = [dict(row) for row in rows]
     for reading in readings:
-        if reading["applications_open"] is not None:
-            try:
-                reading["applications_open"] = json.loads(reading["applications_open"])
-            except (TypeError, json.JSONDecodeError):
-                reading["applications_open"] = []
+        _decode_json_fields(reading)
         for boolean_field in ("gpu_active", "ac_plugged"):
             if reading[boolean_field] is not None:
                 reading[boolean_field] = bool(reading[boolean_field])
     return readings
+
+
+def _decode_json_fields(telemetry: dict[str, Any]) -> None:
+    """Decode structured telemetry while keeping corrupt legacy values safe."""
+    for field, fallback in (("applications_open", []), ("metric_errors", {})):
+        if telemetry.get(field) is not None:
+            try:
+                telemetry[field] = json.loads(telemetry[field])
+            except (TypeError, json.JSONDecodeError):
+                telemetry[field] = fallback

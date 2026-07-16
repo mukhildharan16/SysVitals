@@ -1,6 +1,7 @@
 import os
 import getpass
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -43,10 +44,82 @@ HTTP_READ_TIMEOUT = float(os.environ.get("TW_HTTP_READ_TIMEOUT", "10.0"))
 HTTP_SESSION = requests.Session()
 
 
-IS_WINDOWS = sys.platform == "win32"
+OS_NAME = platform.system()
+IS_WINDOWS = OS_NAME == "Windows"
+IS_LINUX = OS_NAME == "Linux"
 _computer = None
 _cpu_model: str | None = None
 _cpu_model_loaded = False
+_rapl_energy_samples: dict[str, tuple[float, float]] = {}
+_host_details: dict | None = None
+
+
+def set_metric_error(vitals: dict, metric: str, reason: str) -> None:
+    """Expose an unavailable metric to the API/dashboard instead of hiding it."""
+    vitals.setdefault("metric_errors", {}).setdefault(metric, reason)
+
+
+def read_text(path: str, *, metric: str | None = None, vitals: dict | None = None) -> str | None:
+    """Read a sysfs/proc file and retain a useful error when it is inaccessible."""
+    try:
+        with open(path, encoding="utf-8") as file:
+            return file.read().strip()
+    except OSError as error:
+        if metric and vitals is not None:
+            set_metric_error(vitals, metric, f"cannot read {path}: {error.strerror or error}")
+        return None
+
+
+def get_host_details() -> dict:
+    """Detect the operating system and DMI manufacturer/model once per run."""
+    global _host_details
+    if _host_details is not None:
+        return _host_details.copy()
+
+    details = {
+        "os_name": OS_NAME or "Unknown OS",
+        "os_version": platform.platform() or None,
+        "manufacturer": None,
+        "model": None,
+        "metric_errors": {},
+    }
+    if IS_LINUX:
+        os_release = {}
+        for line in (read_text("/etc/os-release") or "").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                os_release[key] = value.strip().strip('"')
+        details["os_version"] = os_release.get("PRETTY_NAME", details["os_version"])
+        details["manufacturer"] = read_text("/sys/class/dmi/id/sys_vendor")
+        details["model"] = read_text("/sys/class/dmi/id/product_name")
+        if not details["manufacturer"]:
+            set_metric_error(details, "manufacturer", "Linux DMI vendor data is not available")
+        if not details["model"]:
+            set_metric_error(details, "model", "Linux DMI product data is not available")
+    elif IS_WINDOWS:
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer,Model | ConvertTo-Json -Compress)"],
+                capture_output=True, text=True, timeout=4,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                import json
+                computer = json.loads(result.stdout)
+                details["manufacturer"] = computer.get("Manufacturer") or None
+                details["model"] = computer.get("Model") or None
+        except (OSError, subprocess.SubprocessError, ValueError) as error:
+            set_metric_error(details, "manufacturer", f"cannot read Windows system manufacturer: {error}")
+            set_metric_error(details, "model", f"cannot read Windows system model: {error}")
+        if not details["manufacturer"]:
+            set_metric_error(details, "manufacturer", "Windows did not report a system manufacturer")
+        if not details["model"]:
+            set_metric_error(details, "model", "Windows did not report a system model")
+    _host_details = details
+    return details.copy()
+
+
+def is_lenovo_host() -> bool:
+    return "lenovo" in (get_host_details().get("manufacturer") or "").casefold()
 
 
 def get_cpu_model() -> str | None:
@@ -111,7 +184,7 @@ def init_windows_sensors():
 
 
 def get_power_status_vitals() -> dict:
-    status = {"ac_plugged": None, "battery_level": None}
+    status = {"ac_plugged": None, "battery_level": None, "metric_errors": {}}
     if IS_WINDOWS:
         try:
             import ctypes
@@ -129,54 +202,69 @@ def get_power_status_vitals() -> dict:
                 status["ac_plugged"] = s.ACLineStatus == 1
                 if s.BatteryLifePercent <= 100:
                     status["battery_level"] = float(s.BatteryLifePercent)
-        except Exception:
-            pass
+        except Exception as error:
+            set_metric_error(status, "ac_plugged", f"Windows power status unavailable: {error}")
     else:
-        # Linux AC power check
+        # Linux kernels expose AC adapters by type rather than a fixed name.
         try:
-            for ac_name in ["AC", "ACAD", "ADP0"]:
-                ac_path = f"/sys/class/power_supply/{ac_name}/online"
-                if os.path.exists(ac_path):
-                    with open(ac_path) as f:
-                        status["ac_plugged"] = f.read().strip() == "1"
+            base = "/sys/class/power_supply"
+            for name in os.listdir(base):
+                type_name = read_text(f"{base}/{name}/type")
+                online = f"{base}/{name}/online"
+                if type_name and type_name.casefold() in {"mains", "usb", "usb_c"} and os.path.exists(online):
+                    raw = read_text(online, metric="ac_plugged", vitals=status)
+                    if raw is not None:
+                        status["ac_plugged"] = raw == "1"
                         break
-        except Exception:
-            pass
+            if status["ac_plugged"] is None:
+                set_metric_error(status, "ac_plugged", "no AC adapter was exposed by /sys/class/power_supply")
+        except OSError as error:
+            set_metric_error(status, "ac_plugged", f"cannot inspect Linux power supplies: {error}")
     return status
 
 
 def get_linux_battery_power() -> dict:
-    vitals = {"battery_power": None, "battery_level": None, "battery_voltage": None}
+    vitals = {"battery_power": None, "battery_level": None, "battery_voltage": None, "metric_errors": {}}
     try:
         base = "/sys/class/power_supply"
         if os.path.exists(base):
             for bat in os.listdir(base):
-                if bat.startswith("BAT"):
+                if (read_text(f"{base}/{bat}/type") or "").casefold() == "battery":
                     cap_path = f"{base}/{bat}/capacity"
                     volt_path = f"{base}/{bat}/voltage_now"
                     power_path = f"{base}/{bat}/power_now"
                     current_path = f"{base}/{bat}/current_now"
                     
                     if os.path.exists(cap_path):
-                        with open(cap_path) as f:
-                            vitals["battery_level"] = float(f.read().strip())
+                        value = read_text(cap_path, metric="battery_level", vitals=vitals)
+                        if value is not None:
+                            vitals["battery_level"] = float(value)
                     
                     voltage = None
                     if os.path.exists(volt_path):
-                        with open(volt_path) as f:
-                            voltage = float(f.read().strip()) / 1000000.0 # microvolts to volts
+                        value = read_text(volt_path, metric="battery_voltage", vitals=vitals)
+                        if value is not None:
+                            voltage = float(value) / 1000000.0 # microvolts to volts
                             vitals["battery_voltage"] = voltage
                     
                     if os.path.exists(power_path):
-                        with open(power_path) as f:
-                            vitals["battery_power"] = float(f.read().strip()) / 1000000.0 # microwatts to watts
+                        value = read_text(power_path, metric="battery_power", vitals=vitals)
+                        if value is not None:
+                            vitals["battery_power"] = abs(float(value) / 1000000.0) # microwatts to watts
                     elif os.path.exists(current_path) and voltage is not None:
-                        with open(current_path) as f:
-                            current = float(f.read().strip()) / 1000000.0 # microamperes to amperes
+                        value = read_text(current_path, metric="battery_power", vitals=vitals)
+                        if value is not None:
+                            current = float(value) / 1000000.0 # microamperes to amperes
                             vitals["battery_power"] = current * voltage
                     break
-    except Exception:
-        pass
+        if vitals["battery_level"] is None:
+            set_metric_error(vitals, "battery_level", "no battery capacity sensor was exposed by Linux")
+        if vitals["battery_power"] is None:
+            set_metric_error(vitals, "battery_power", "battery charge/discharge power is not exposed by this Linux battery driver")
+        if vitals["battery_voltage"] is None:
+            set_metric_error(vitals, "battery_voltage", "battery voltage is not exposed by this Linux battery driver")
+    except (OSError, ValueError) as error:
+        set_metric_error(vitals, "battery_level", f"cannot read Linux battery data: {error}")
     return vitals
 
 
@@ -231,6 +319,89 @@ def get_vitals_from_wmi() -> dict:
     return vitals
 
 
+def get_linux_cpu_power(vitals: dict) -> float | None:
+    """Read package power from Intel/AMD RAPL energy counters when available."""
+    now = time.monotonic()
+    try:
+        domains = []
+        for root, _, files in os.walk("/sys/class/powercap"):
+            if "energy_uj" not in files:
+                continue
+            name = (read_text(os.path.join(root, "name")) or "").casefold()
+            if "package" in name or "pkg" in name:
+                domains.append(root)
+        if not domains:
+            set_metric_error(vitals, "cpu_power", "RAPL package-energy counters are not available (load the CPU powercap driver if supported)")
+            return None
+
+        watts = []
+        for domain in domains:
+            energy_text = read_text(os.path.join(domain, "energy_uj"), metric="cpu_power", vitals=vitals)
+            if energy_text is None:
+                continue
+            energy = float(energy_text)
+            previous = _rapl_energy_samples.get(domain)
+            _rapl_energy_samples[domain] = (energy, now)
+            if previous:
+                delta_energy = energy - previous[0]
+                if delta_energy < 0:  # Counter wrapped.
+                    max_range = read_text(os.path.join(domain, "max_energy_range_uj"))
+                    if max_range:
+                        delta_energy += float(max_range)
+                elapsed = now - previous[1]
+                if elapsed > 0:
+                    watts.append(delta_energy / 1_000_000 / elapsed)
+        if watts:
+            return sum(watts)
+        set_metric_error(vitals, "cpu_power", "waiting for a second RAPL sample to calculate CPU package power")
+    except (OSError, ValueError) as error:
+        set_metric_error(vitals, "cpu_power", f"cannot read Linux CPU package power: {error}")
+    return None
+
+
+def collect_linux_cpu_vitals(vitals: dict) -> None:
+    try:
+        import psutil
+        temps = psutil.sensors_temperatures()
+        preferred = ("k10temp", "coretemp", "cpu_thermal", "zenpower")
+        for key in preferred:
+            if temps.get(key):
+                vitals["cpu_temp"] = float(temps[key][0].current)
+                break
+        if vitals["cpu_temp"] is None:
+            for entries in temps.values():
+                if entries:
+                    vitals["cpu_temp"] = float(entries[0].current)
+                    break
+        vitals["cpu_util"] = float(psutil.cpu_percent(interval=None))
+        frequency = psutil.cpu_freq()
+        if frequency:
+            vitals["cpu_clock"] = float(frequency.current)
+        else:
+            set_metric_error(vitals, "cpu_clock", "Linux did not expose the current CPU frequency")
+    except Exception as error:
+        set_metric_error(vitals, "cpu_util", f"cannot read Linux CPU utilization: {error}")
+        set_metric_error(vitals, "cpu_clock", f"cannot read Linux CPU frequency: {error}")
+
+    if vitals["cpu_temp"] is None:
+        try:
+            for zone in sorted(os.listdir("/sys/class/thermal")):
+                type_path = f"/sys/class/thermal/{zone}/type"
+                temp_path = f"/sys/class/thermal/{zone}/temp"
+                zone_type = (read_text(type_path) or "").casefold()
+                raw = read_text(temp_path)
+                if raw and any(marker in zone_type for marker in ("cpu", "x86_pkg_temp", "k10temp")):
+                    vitals["cpu_temp"] = float(raw) / 1000.0
+                    break
+        except OSError as error:
+            set_metric_error(vitals, "cpu_temp", f"cannot inspect Linux thermal zones: {error}")
+    if vitals["cpu_temp"] is None:
+        set_metric_error(vitals, "cpu_temp", "no CPU temperature sensor is exposed; install/configure lm-sensors if this hardware supports it")
+    if vitals["cpu_util"] is None:
+        set_metric_error(vitals, "cpu_util", "Linux CPU utilization was unavailable")
+    vitals["cpu_power"] = get_linux_cpu_power(vitals)
+
+
 def get_vitals() -> dict:
     vitals = {
         "cpu_temp": None,
@@ -239,7 +410,8 @@ def get_vitals() -> dict:
         "cpu_util": None,
         "battery_power": None,
         "battery_voltage": None,
-        "battery_level": None
+        "battery_level": None,
+        "metric_errors": {},
     }
 
     if IS_WINDOWS:
@@ -323,62 +495,22 @@ def get_vitals() -> dict:
 
         return vitals
 
-    # Linux implementation (fallback/default values)
-    # CPU Temp
-    try:
-        import psutil
+    if not IS_LINUX:
+        for metric in ("cpu_temp", "cpu_power", "cpu_clock", "cpu_util"):
+            set_metric_error(vitals, metric, f"{OS_NAME or 'this operating system'} is not supported by this monitor")
+        return vitals
 
-        temps = psutil.sensors_temperatures()
-        for key in ("k10temp", "coretemp", "cpu_thermal", "zenpower"):
-            if key in temps and temps[key]:
-                vitals["cpu_temp"] = float(temps[key][0].current)
-                break
-        if vitals["cpu_temp"] is None:
-            for entries in temps.values():
-                if entries:
-                    vitals["cpu_temp"] = float(entries[0].current)
-                    break
-    except Exception:
-        pass
-
-    if vitals["cpu_temp"] is None:
-        try:
-            base = "/sys/class/thermal"
-            for zone in sorted(os.listdir(base)):
-                type_path = f"{base}/{zone}/type"
-                temp_path = f"{base}/{zone}/temp"
-                if os.path.exists(temp_path):
-                    with open(type_path) as f:
-                        zone_type = f.read().strip().lower()
-                    if "cpu" in zone_type or "x86_pkg_temp" in zone_type or "k10temp" in zone_type:
-                        with open(temp_path) as f:
-                            vitals["cpu_temp"] = int(f.read().strip()) / 1000.0
-                            break
-        except Exception:
-            pass
-
-    # CPU Util
-    try:
-        import psutil
-
-        vitals["cpu_util"] = float(psutil.cpu_percent())
-    except Exception:
-        pass
-
-    # CPU Clock
-    try:
-        import psutil
-
-        vitals["cpu_clock"] = float(psutil.cpu_freq().current)
-    except Exception:
-        pass
-
-    # Fallbacks for Linux
-    vitals["cpu_power"] = 0.0
-
-    vitals.update(get_linux_battery_power())
+    collect_linux_cpu_vitals(vitals)
+    merge_vitals(vitals, get_linux_battery_power())
 
     return vitals
+
+
+def merge_vitals(target: dict, source: dict) -> None:
+    """Merge collector output without losing diagnostics from another collector."""
+    errors = source.pop("metric_errors", {})
+    target.update(source)
+    target.setdefault("metric_errors", {}).update(errors)
 
 
 def get_system_details() -> dict:
@@ -389,6 +521,7 @@ def get_system_details() -> dict:
         "applications_open": None,
         "uptime_seconds": None,
         "current_user": None,
+        "metric_errors": {},
     }
     try:
         import psutil
@@ -405,13 +538,14 @@ def get_system_details() -> dict:
             except (psutil.AccessDenied, psutil.NoSuchProcess):
                 continue
         details["applications_open"] = sorted(applications, key=str.casefold)
-    except Exception:
-        pass
+    except Exception as error:
+        for metric in ("memory_used_mb", "uptime_seconds", "applications_open"):
+            set_metric_error(details, metric, f"cannot read system details: {error}")
 
     try:
         details["current_user"] = getpass.getuser()
-    except Exception:
-        pass
+    except Exception as error:
+        set_metric_error(details, "current_user", f"cannot read current user: {error}")
     return details
 
 
@@ -419,6 +553,7 @@ class GpuMonitor:
     def __init__(self):
         self.initialized = False
         self.handle = None
+        self.linux_gpu_path: str | None = None
         self.last_vitals = {
             "gpu_name": None,
             "gpu_temp": None,
@@ -446,9 +581,56 @@ class GpuMonitor:
         except Exception as e:
             print(f"Note: NVML could not be initialized (no NVIDIA GPU or driver): {e}", file=sys.stderr)
             self.last_vitals["gpu_active"] = False
+            if IS_LINUX:
+                self._initialize_linux_gpu()
+
+    def _initialize_linux_gpu(self) -> None:
+        """Use standard DRM/sysfs telemetry for AMD and Intel when NVML is absent."""
+        try:
+            for card in sorted(Path("/sys/class/drm").glob("card[0-9]*")):
+                device = card / "device"
+                vendor = read_text(str(device / "vendor"))
+                if vendor not in {"0x1002", "0x8086"}:
+                    continue
+                self.linux_gpu_path = str(device)
+                self.last_vitals["gpu_name"] = "AMD GPU" if vendor == "0x1002" else "Intel GPU"
+                self.last_vitals["gpu_active"] = True
+                return
+        except OSError as error:
+            print(f"Warning: Cannot inspect Linux DRM GPUs: {error}", file=sys.stderr)
+
+    def _get_linux_gpu_vitals(self) -> dict:
+        if not self.linux_gpu_path:
+            return self.last_vitals
+        device = self.linux_gpu_path
+        try:
+            busy = read_text(f"{device}/gpu_busy_percent")
+            if busy is not None:
+                self.last_vitals["gpu_util"] = float(busy)
+            used = read_text(f"{device}/mem_info_vram_used")
+            total = read_text(f"{device}/mem_info_vram_total")
+            if used is not None and total is not None:
+                self.last_vitals["gpu_mem_used"] = float(used) / (1024 * 1024)
+                self.last_vitals["gpu_mem_total"] = float(total) / (1024 * 1024)
+
+            hwmon_root = Path(device) / "hwmon"
+            for hwmon in hwmon_root.glob("hwmon*"):
+                temperature = read_text(str(hwmon / "temp1_input"))
+                power = read_text(str(hwmon / "power1_average"))
+                if temperature is not None:
+                    self.last_vitals["gpu_temp"] = float(temperature) / 1000.0
+                if power is not None:
+                    self.last_vitals["gpu_power"] = float(power) / 1_000_000
+                if temperature is not None or power is not None:
+                    break
+        except (OSError, ValueError) as error:
+            print(f"Warning: Cannot read Linux DRM GPU telemetry: {error}", file=sys.stderr)
+        return self.last_vitals
 
     def get_gpu_vitals(self) -> dict:
         if not self.initialized or not self.handle:
+            if self.linux_gpu_path:
+                return self._get_linux_gpu_vitals()
             self.last_vitals["gpu_active"] = False
             return self.last_vitals
             
@@ -519,7 +701,7 @@ class GpuMonitor:
 
 
 
-def get_power_mode() -> str:
+def get_power_mode(vitals: dict) -> str:
     if IS_WINDOWS:
         # Retrieve exclusively from Lenovo Legion Toolkit CLI (llt.exe)
         llt_path = r"C:\Softwares\LenovoLegionToolkit\llt.exe"
@@ -545,18 +727,49 @@ def get_power_mode() -> str:
                 print(f"Warning: Failed to execute Lenovo Legion Toolkit CLI: {e}", file=sys.stderr)
         else:
             print(f"Warning: llt.exe not found at {llt_path}", file=sys.stderr)
+        set_metric_error(vitals, "power_mode", "Lenovo Legion Toolkit could not provide the Windows power mode")
         return "unknown"
 
-    # Linux implementation
-    profile = None
+    # LenovoLegionLinux publishes the active Legion mode via the standard
+    # platform_profile interface. This is read-only, unlike legion_cli's fan
+    # curve commands, so collecting telemetry never changes device settings.
+    profile_path = "/sys/firmware/acpi/platform_profile"
+    profile = read_text(profile_path)
+    if profile:
+        return {
+            "low-power": "quiet",
+            "quiet": "quiet",
+            "balanced": "balanced",
+            "performance": "performance",
+            "custom": "turbo",
+        }.get(profile.casefold(), profile.casefold())
+
     try:
         out = subprocess.run(
             ["powerprofilesctl", "get"], capture_output=True, text=True, timeout=3
         )
         if out.returncode == 0:
             profile = out.stdout.strip()
-    except Exception:
-        pass
+        else:
+            set_metric_error(vitals, "power_mode", f"powerprofilesctl failed: {out.stderr.strip() or 'no error text returned'}")
+    except FileNotFoundError:
+        if is_lenovo_host():
+            legion_cli = os.environ.get("SV_LENOVO_LEGION_CLI") or shutil.which("legion_cli") or shutil.which("legion-cli")
+            if legion_cli:
+                # LenovoLegionLinux's CLI is intentionally consulted only to
+                # validate its installation. Its public commands write fan
+                # curves and do not offer a safe read-only profile query.
+                check = subprocess.run([legion_cli, "--help"], capture_output=True, text=True, timeout=3)
+                if check.returncode != 0:
+                    set_metric_error(vitals, "power_mode", f"LenovoLegionLinux CLI at {legion_cli} could not run: {check.stderr.strip() or 'unknown error'}")
+                else:
+                    set_metric_error(vitals, "power_mode", "LenovoLegionLinux CLI is installed, but the active profile is not exposed; enable its platform-profile driver or power-profiles-daemon")
+            else:
+                set_metric_error(vitals, "power_mode", "Lenovo host detected but LenovoLegionLinux CLI was not found; install it or expose /sys/firmware/acpi/platform_profile")
+        else:
+            set_metric_error(vitals, "power_mode", "powerprofilesctl is not installed and no platform profile is exposed")
+    except (OSError, subprocess.SubprocessError) as error:
+        set_metric_error(vitals, "power_mode", f"cannot query Linux power profile: {error}")
 
     label = {
         "power-saver": "quiet",
@@ -572,12 +785,40 @@ def get_power_mode() -> str:
         except Exception:
             pass
 
+    if label == "unknown":
+        set_metric_error(vitals, "power_mode", "Linux did not report an active power profile")
     return label
+
+
+def mark_unavailable_metrics(vitals: dict) -> None:
+    """Make every missing dashboard metric explain itself to the user."""
+    reasons = {
+        "cpu_temp": "CPU temperature is not exposed by the installed hardware driver",
+        "cpu_power": "CPU package power is not exposed by the installed hardware driver",
+        "cpu_clock": "current CPU clock is not exposed by the operating system",
+        "cpu_util": "CPU utilization is not available",
+        "gpu_temp": "no readable NVIDIA GPU sensor was found (AMD/Intel GPU telemetry is not configured)",
+        "gpu_power": "no readable NVIDIA GPU power sensor was found (AMD/Intel GPU telemetry is not configured)",
+        "gpu_util": "no readable NVIDIA GPU utilization sensor was found (AMD/Intel GPU telemetry is not configured)",
+        "gpu_mem_used": "no readable NVIDIA GPU memory sensor was found (AMD/Intel GPU telemetry is not configured)",
+        "gpu_mem_total": "no readable NVIDIA GPU memory sensor was found (AMD/Intel GPU telemetry is not configured)",
+        "battery_level": "this device does not expose a battery charge sensor",
+        "battery_power": "this device does not expose battery charge/discharge power",
+        "battery_voltage": "this device does not expose battery voltage",
+        "ac_plugged": "this device does not expose AC-adapter status",
+    }
+    for metric, reason in reasons.items():
+        if vitals.get(metric) is None:
+            set_metric_error(vitals, metric, reason)
 
 
 def send_reading(vitals: dict, power_mode: str):
     payload = {
         "device_secret": DEVICE_SECRET,
+        "os_name": vitals.get("os_name"),
+        "os_version": vitals.get("os_version"),
+        "manufacturer": vitals.get("manufacturer"),
+        "model": vitals.get("model"),
         "cpu_name": vitals.get("cpu_name"),
         "cpu_temp": vitals.get("cpu_temp"),
         "cpu_power": vitals.get("cpu_power"),
@@ -598,7 +839,8 @@ def send_reading(vitals: dict, power_mode: str):
         "applications_open": vitals.get("applications_open"),
         "uptime_seconds": vitals.get("uptime_seconds"),
         "current_user": vitals.get("current_user"),
-        "power_mode": power_mode
+        "power_mode": power_mode,
+        "metric_errors": vitals.get("metric_errors") or None,
     }
     
     resp = HTTP_SESSION.post(
@@ -621,16 +863,20 @@ def main():
     try:
         while True:
             vitals = get_vitals()
-            vitals.update(get_system_details())
+            merge_vitals(vitals, get_host_details())
+            merge_vitals(vitals, get_system_details())
             gpu_vitals = gpu_monitor.get_gpu_vitals()
             vitals.update(gpu_vitals)
             
             p_status = get_power_status_vitals()
             for k, v in p_status.items():
-                if vitals.get(k) is None:
+                if k == "metric_errors":
+                    vitals["metric_errors"].update(v)
+                elif vitals.get(k) is None:
                     vitals[k] = v
 
-            mode = get_power_mode()
+            mode = get_power_mode(vitals)
+            mark_unavailable_metrics(vitals)
             try:
                 send_reading(vitals, mode)
                 cpu_t = f"{vitals['cpu_temp']:.1f}°C" if vitals['cpu_temp'] is not None else "N/A"

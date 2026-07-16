@@ -158,7 +158,7 @@ function colorForPower(p){
   return CRIT;
 }
 
-function setGauge(arcId, tempId, temp, isGpu = false){
+function setGauge(arcId, tempId, temp, isGpu = false, unavailable = ''){
   const circumference = 2 * Math.PI * 100; // ~628
   const maxTemp = isGpu ? 90 : 105;
   const pct = Math.max(0, Math.min(1, temp / maxTemp));
@@ -174,7 +174,8 @@ function setGauge(arcId, tempId, temp, isGpu = false){
   const tempEl = document.getElementById(tempId);
   if (tempEl) {
     tempEl.style.color = c;
-    tempEl.textContent = temp > 0 ? temp.toFixed(1) : '--';
+    tempEl.textContent = temp > 0 ? temp.toFixed(1) : (unavailable ? 'N/A' : '--');
+    tempEl.title = unavailable;
   }
   
   const parent = arc.closest('.gauge');
@@ -184,7 +185,7 @@ function setGauge(arcId, tempId, temp, isGpu = false){
 }
 
 // Power gauge setup
-function setPowerGauge(arcId, valId, power){
+function setPowerGauge(arcId, valId, power, unavailable = ''){
   const circumference = 2 * Math.PI * 100; // ~628
   const pct = Math.max(0, Math.min(1, power / 170));
   const offset = circumference * (1 - pct);
@@ -199,13 +200,36 @@ function setPowerGauge(arcId, valId, power){
   const valEl = document.getElementById(valId);
   if (valEl) {
     valEl.style.color = c;
-    valEl.textContent = power > 0 ? power.toFixed(1) : '--';
+    valEl.textContent = power > 0 ? power.toFixed(1) : (unavailable ? 'N/A' : '--');
+    valEl.title = unavailable;
   }
   
   const parent = arc.closest('.gauge');
   if (parent) {
     parent.style.filter = `drop-shadow(0 0 16px ${c}33)`;
   }
+}
+
+function unavailableReason(data, metric) {
+  return typeof data.metric_errors?.[metric] === 'string' ? data.metric_errors[metric] : '';
+}
+
+function metricText(data, metric, value) {
+  const reason = unavailableReason(data, metric);
+  return value == null ? (reason ? 'Unavailable' : '—') : value;
+}
+
+function showTelemetryErrors(data) {
+  const errorEl = document.getElementById('telemetryError');
+  if (!errorEl) return;
+  const errors = Object.entries(data.metric_errors || {});
+  if (!errors.length) {
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+    return;
+  }
+  errorEl.style.display = 'block';
+  errorEl.textContent = `Unavailable metrics: ${errors.map(([metric, reason]) => `${metric.replaceAll('_', ' ')} — ${reason}`).join(' · ')}`;
 }
 
 function setModeChip(mode){
@@ -558,20 +582,26 @@ async function refreshLatest(){
     if (hostLabel) hostLabel.textContent = 'online';
 
     const cpuPanelTitle = document.getElementById('cpuPanelTitle');
-    if (cpuPanelTitle) cpuPanelTitle.textContent = d.cpu_name || 'CPU';
+    if (cpuPanelTitle) cpuPanelTitle.textContent = d.cpu_name || [d.manufacturer, d.model].filter(Boolean).join(' ') || 'CPU';
+    const deviceDetails = document.getElementById('deviceDetails');
+    if (deviceDetails) {
+      const identity = [d.manufacturer, d.model].filter(Boolean).join(' ');
+      const os = [d.os_name, d.os_version].filter(Boolean).join(' · ');
+      deviceDetails.textContent = [identity, os].filter(Boolean).join(' — ') || 'Device identity unavailable';
+    }
     const gpuPanelTitle = document.getElementById('gpuPanelTitle');
     if (gpuPanelTitle) gpuPanelTitle.textContent = d.gpu_name || 'GPU';
     
     // CPU
     const cpuTemp = typeof d.cpu_temp === 'number' ? d.cpu_temp : 0;
-    setGauge('cpuGaugeArc', 'cpuGaugeTemp', cpuTemp, false);
+    setGauge('cpuGaugeArc', 'cpuGaugeTemp', cpuTemp, false, unavailableReason(d, 'cpu_temp'));
     
     const cpuUtilEl = document.getElementById('cpuUtilVal');
     const cpuPowerEl = document.getElementById('cpuPowerVal');
     const cpuClockEl = document.getElementById('cpuClockVal');
-    if (cpuUtilEl) cpuUtilEl.textContent = typeof d.cpu_util === 'number' ? `${d.cpu_util.toFixed(0)}%` : '—';
-    if (cpuPowerEl) cpuPowerEl.textContent = typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : '—';
-    if (cpuClockEl) cpuClockEl.textContent = typeof d.cpu_clock === 'number' ? `${d.cpu_clock.toFixed(0)} MHz` : '—';
+    if (cpuUtilEl) cpuUtilEl.textContent = metricText(d, 'cpu_util', typeof d.cpu_util === 'number' ? `${d.cpu_util.toFixed(0)}%` : null);
+    if (cpuPowerEl) cpuPowerEl.textContent = metricText(d, 'cpu_power', typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : null);
+    if (cpuClockEl) cpuClockEl.textContent = metricText(d, 'cpu_clock', typeof d.cpu_clock === 'number' ? `${d.cpu_clock.toFixed(0)} MHz` : null);
     
     const cpuFanSpeed = getFanSpeed(d.power_mode, cpuTemp, false);
     const cpuFanEl = document.getElementById('cpuFanVal');
@@ -579,12 +609,12 @@ async function refreshLatest(){
 
     // GPU
     const gpuTemp = typeof d.gpu_temp === 'number' ? d.gpu_temp : 0;
-    setGauge('gpuGaugeArc', 'gpuGaugeTemp', gpuTemp, true);
+    setGauge('gpuGaugeArc', 'gpuGaugeTemp', gpuTemp, true, unavailableReason(d, 'gpu_temp'));
     
     const gpuUtilEl = document.getElementById('gpuUtilVal');
     const gpuPowerEl = document.getElementById('gpuPowerVal');
-    if (gpuUtilEl) gpuUtilEl.textContent = typeof d.gpu_util === 'number' ? `${d.gpu_util.toFixed(0)}%` : '—';
-    if (gpuPowerEl) gpuPowerEl.textContent = typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : '—';
+    if (gpuUtilEl) gpuUtilEl.textContent = metricText(d, 'gpu_util', typeof d.gpu_util === 'number' ? `${d.gpu_util.toFixed(0)}%` : null);
+    if (gpuPowerEl) gpuPowerEl.textContent = metricText(d, 'gpu_power', typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : null);
     
     const gpuFanEl = document.getElementById('gpuFanVal');
     if (gpuFanEl) {
@@ -618,7 +648,7 @@ async function refreshLatest(){
         const pct = (d.gpu_mem_used / d.gpu_mem_total) * 100;
         gpuVramEl.textContent = `${usedGB.toFixed(2)} GB / ${totalGB.toFixed(1)} GB (${pct.toFixed(0)}%)`;
       } else {
-        gpuVramEl.textContent = '—';
+        gpuVramEl.textContent = metricText(d, 'gpu_mem_used', null);
       }
     }
 
@@ -677,12 +707,12 @@ async function refreshLatest(){
       }
     }
     
-    setPowerGauge('powerGaugeArc', 'powerGaugeVal', totalPower);
+    setPowerGauge('powerGaugeArc', 'powerGaugeVal', totalPower, unavailableReason(d, 'cpu_power') || unavailableReason(d, 'gpu_power'));
     
     const cpuPowerVal2El = document.getElementById('cpuPowerVal2');
     const gpuPowerVal2El = document.getElementById('gpuPowerVal2');
-    if (cpuPowerVal2El) cpuPowerVal2El.textContent = typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : '—';
-    if (gpuPowerVal2El) gpuPowerVal2El.textContent = typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : '—';
+    if (cpuPowerVal2El) cpuPowerVal2El.textContent = metricText(d, 'cpu_power', typeof d.cpu_power === 'number' ? `${d.cpu_power.toFixed(1)} W` : null);
+    if (gpuPowerVal2El) gpuPowerVal2El.textContent = metricText(d, 'gpu_power', typeof d.gpu_power === 'number' ? `${d.gpu_power.toFixed(1)} W` : null);
     
     const batteryPowerValEl = document.getElementById('batteryPowerVal');
     if (batteryPowerValEl) {
@@ -690,12 +720,13 @@ async function refreshLatest(){
         const prefix = d.ac_plugged === true ? '+' : '-';
         batteryPowerValEl.textContent = `${prefix}${d.battery_power.toFixed(1)} W`;
       } else {
-        batteryPowerValEl.textContent = '—';
+        batteryPowerValEl.textContent = metricText(d, 'battery_power', null);
       }
     }
     
     const batteryStatusValEl = document.getElementById('batteryStatusVal');
     if (batteryStatusValEl) batteryStatusValEl.textContent = batteryStatusStr;
+    showTelemetryErrors(d);
     
     const pChip = document.getElementById('powerSourceChip');
     if (pChip) {
